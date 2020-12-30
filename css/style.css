@@ -1,5 +1,5 @@
 body { padding: 0; height: 100vh; font-family: Helvetica, sans-serif; }
-nav { background: #6f4e37; width: 100%; color: white; padding: 7px; box-sizing: border-box; height: 30px }
+nav { background: #462915; width: 100%; color: white; padding: 7px; box-sizing: border-box; height: 30px }
 nav svg{ height: 10px; }
 nav svg path{ fill: white }
 #c-map{ height: calc( 100% - 30px ) }
@@ -9,3 +9,11 @@ nav svg path{ fill: white }
 #map-link{ position: absolute; top: 45px; height: 20px; width: 20px; right: 20px; }
 #find-me{ position: absolute; bottom: 45px; height: 20px; width: 20px; right: 20px; z-index: 1001; font-size: 10px; padding: 0; text-align: center;}
 #loading{ display: none; color: white; position: absolute; bottom: 15px; height: 20px; width: 20px; left: 20px; }
+
+nav .link{ float: right; font-size: 14px }
+a{ color: white; }
+a:visited{ color: #aaa }
+.site-id{ text-decoration: none; }
+.content{ max-width: 600px; margin: 0 auto; padding: 20px;}
+
+.leaflet-zoom-hide { position: absolute!important; }
