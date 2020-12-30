@@ -10,8 +10,9 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks('grunt-processhtml')
     grunt.loadNpmTasks('grunt-contrib-uglify-es')
     grunt.loadNpmTasks('grunt-contrib-requirejs')
+    grunt.loadNpmTasks('grunt-contrib-cssmin')
 
-    grunt.registerTask('default', ['requirejs', 'uglify', 'processhtml'])
+    grunt.registerTask('default', ['requirejs', 'uglify', 'cssmin', 'processhtml'])
 
     grunt.initConfig({
         rootDir: __dirname,
@@ -56,5 +57,22 @@ module.exports = function (grunt) {
                 }
             }
         },
+
+        cssmin: {
+            vendor: {
+                options: {
+                    // This property replaces the "url('imagepath')"
+                    // styled attributes to the correct relative paths.
+                    rebase: true
+                },
+                files: {'css/bundle.min.css': [
+                    'css/normalize.css',
+                    'css/style.css',
+                    'node_modules/leaflet/dist/leaflet.css',
+                    'node_modules/leaflet-overpass-layer/dist/OverPassLayer.css',
+                    'node_modules/leaflet-search/dist/leaflet-search.src.css'
+                ]}
+            }
+        }
     })
 }

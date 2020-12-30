@@ -1,4 +1,4 @@
-define(['leaflet', 'clipper'], (L, ClipperLib) => {
+define(['leaflet', 'clipper', 'min-zoom-indicator'], (L, ClipperLib, MinZoomIndicator) => {
 
   const OverPassLayer = L.FeatureGroup.extend({
     options: {
@@ -384,7 +384,7 @@ define(['leaflet', 'clipper'], (L, ClipperLib) => {
           this._zoomControl = this._map.zoomIndicator;
           this._zoomControl._addLayer(this);
         } else {
-          this._zoomControl = new L.Control.MinZoomIndicator(
+          this._zoomControl = new MinZoomIndicator(
             this.options.minZoomIndicatorOptions
           );
 

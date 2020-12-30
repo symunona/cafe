@@ -6,7 +6,9 @@ var requireConfig = {
       'heatmap': '../node_modules/heatmap.js/build/heatmap',
       'overpass': 'lib/overpass-layer',
       'clipper': 'lib/clipper',
-      'leaflet-heatmap-plugin': 'lib/leaflet-heatmap'
+      'min-zoom-indicator': 'lib/min-zoom-indicator',
+      'leaflet-heatmap-plugin': 'lib/leaflet-heatmap',
+      'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src'
     },
     shim: {
       'leaflet': { exports: 'L' },
