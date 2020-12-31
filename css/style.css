@@ -17,3 +17,48 @@ a:visited{ color: #aaa }
 .content{ max-width: 600px; margin: 0 auto; padding: 20px;}
 
 .leaflet-zoom-hide { position: absolute!important; }
+
+.leaflet-control-search .search-button{
+    font-family: 'Font Awesome 5 Pro';
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    line-height: 1;
+    text-decoration: none;
+    background: white !important;
+}
+
+.leaflet-control-search .search-cancel:before{
+    content: "\f00d";
+    font-family: 'Font Awesome 5 Pro';
+    display: block;
+    margin: 0 auto;
+    padding: 2px;
+    font-size: 16px;
+    color: #111;
+}
+.leaflet-control-search .search-cancel{
+    font-family: 'Font Awesome 5 Pro';
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    line-height: 1;
+    text-decoration: none;
+    background: transparent !important;
+}
+
+.leaflet-control-search .search-button:before{
+    font-family: 'Font Awesome 5 Pro';
+    content: "\f002";
+    display: block;
+    margin: 0 auto;
+    padding: 7px;
+    font-size: 16px;
+    color: #111;
+}
