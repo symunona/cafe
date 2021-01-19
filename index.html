@@ -22,18 +22,59 @@
 </head>
 
 <body>
-  <nav>
-    <a href="info.html" class="link">what?</a>
-
+  <nav id="head">
     <i class="fa fa-coffee"></i>
-    Find me a coffee
+    <span class="loading">
+      <i class='fa fa-circle-notch fa-spin'></i>
+    </span>
+
     <span id="hit-count"></span>
-    <div id="search-box"></div>
+  </nav>
+
+  <nav class="what" onclick="showInfo()">
+    <a class="link">
+      <i class="fa fa-question"></i>
+    </a>
   </nav>
 
   <div id="c-map"></div>
-  <!-- <div id="status"></div> -->
-  <div id="loading">...</div>
+
+  <div id="modal" onclick="hideModal()">
+    <div class="content">
+      <h1>What's this?</h1>
+      <p>
+        A Hipster district finder.
+        During my travels I noticed a correlation between the density of
+        cafés and how lively the neighborhood is.
+      </p>
+      <p>
+        This little map is an experiment to aid me finding nice areas
+        where I am more likely to bump into my next favorite place.
+      </p>
+
+      <p>
+        It works with OpenStreetMap data, uses the Overpass API and it's not
+        accurate. It gets the job done though.
+      </p>
+
+      <h3>Legend</h3>
+      <p>
+        Other things might as well be interesting, so I created multiple layers
+        <ul>
+          <li>Brown-yellow areas are cafés</li>
+          <li>Reds are universities</li>
+          <li>Blues are libraries</li>
+        </ul>
+        <img src="img/legend.png">
+      </p>
+      <p><i class="fa fa-code"></i> with <i class="fa fa-heart"></i> by <a href="https://github.com/symunona" target="_blank">goose</a></p>
+    </div>
+  </div>
+
+  <div id="toast" onclick="hideToast()">
+    <div id="error"></div>
+  </div>
+
   <button id="find-me" onclick="findMe()"><i class="fa fa-crosshairs"></i></button>
 
   <script src="js/bundle.min.js"></script>

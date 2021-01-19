@@ -26648,7 +26648,8 @@ return heatmapFactory;
                 generatedData.max = localMax;
                 generatedData.min = localMin;
             }
-
+            // console.log('from this', this._data)
+            // console.log('found points within', latLngPoints)
             generatedData.data = latLngPoints;
 
             this._heatmap.setData(generatedData);
@@ -27819,12 +27820,18 @@ requirejs([
 
     var v = {
       lat: map.getCenter().lat,
-      lng: map.getCenter().lng,
-      zoom: map.getZoom()
+      lng: map.getCenter().lng
     };
+
+    // If we do not normalize the coords, heatmap and overpass layers will break.
+    v = map.wrapLatLng(v);
+    v.zoom = map.getZoom()
+
     localStorage.setItem(POSITION_LS_KEY, JSON.stringify(v));
 
     location.hash = `#${v.lat},${v.lng},${v.zoom}z`
+
+    document.getElementById('hit-count').textContent = layers['cafe']._heatmap.getData().data.length
   })
 
   function hideLayerData() {
@@ -27891,7 +27898,7 @@ requirejs([
     },
   }
 
-  let layers = {}
+  let layers = window.layers = {}
 
   // Init heatmap layers.
   Object.keys(interests).map((amenity) => {
@@ -27903,20 +27910,29 @@ requirejs([
 
   let queries = Object.keys(interests).map((amenity) => `node({{bbox}})[amenity=${amenity}];`).join('')
 
+
+
   let opl = new L.OverPassLayer({
     query: `(${queries});out qt;`,
     minZoom: 13,
     minZoomIndicatorOptions: { minZoomMessage: 'Get closer to see the heatmap: CURRENTZOOM/MINZOOMLEVEL.' },
 
+    beforeRequest(){
+      loading(true)
+      // TODO: maybe cancel, when zoom level is too low?
+      // return false
+    },
+
+    onError(error){
+      loading(false)
+      showError(`[${error.statusCode}] ${error.statusText} - ${error.responseText}`, error);
+    },
+
     onSuccess: function (data) {
       data.elements.map((e) => e.count = 1)
 
-      // console.log('yeah', data.elements)
-
-      document.getElementById('hit-count').textContent = `(${data.elements.length})`
-
       if (data.elements.length > 10000) {
-        console.error('too much data...', data.elements.length)
+        showError('too much data... ' + data.elements.length);
         return;
       }
 
@@ -27928,11 +27944,25 @@ requirejs([
         }
       })
 
+      // The heatmap
       showData(data.elements)
+
+      // Little clickable dots with popup
+      addMarkersToLayer.call(this, data)
+
+      loading(false)
 
       return data
     },
   });
+
+  function loading(isLoading) {
+    if (isLoading) {
+      document.getElementById('head').classList.add('loading')
+    } else {
+      document.getElementById('head').classList.remove('loading')
+    }
+  }
 
   function showData(data) {
     Object.keys(interests).map((amenity) => {
@@ -27940,6 +27970,8 @@ requirejs([
       // console.log('found', amenity, amenityList.length)
       layers[amenity].setData({ data: amenityList, max: 2 })
     })
+
+    document.getElementById('hit-count').textContent = layers['cafe']._heatmap.getData().data.length
   }
 
   // var searchLayer = L.layerGroup().addTo(map);
@@ -27957,12 +27989,12 @@ requirejs([
 
   map.addLayer(opl)
 
-  if (location.hash && location.hash.split(',').length === 3){
+  if (location.hash && location.hash.split(',').length === 3) {
     let lat = parseFloat(location.hash.split(',')[0].substr(1))
     let lng = parseFloat(location.hash.split(',')[1])
     let zoom = parseInt(location.hash.split(',')[2])
     map.setView(L.latLng(lat, lng), zoom, true);
-  }else{
+  } else {
     restore(map)
   }
 
@@ -27981,11 +28013,66 @@ requirejs([
     toggle(document.getElementById(status))
   }
 
-  function toggle(elem){
-    elem.style.display = window.getComputedStyle(elem).display === 'block'?'none':'block'
+  function toggle(elem) {
+    elem.style.display = window.getComputedStyle(elem).display === 'block' ? 'none' : 'block'
   }
 
   window.findMe = geoFindMe
+
+  window.showInfo = function(){
+    document.getElementById('modal').style.display = 'block';
+  }
+  window.hideModal = function(){
+    document.getElementById('modal').style.display = 'none';
+  }
+
+  window.hideToast = function(){
+    document.getElementById('toast').style.display = 'none'
+  }
+
+  function addMarkersToLayer(data){
+    for (let i = 0; i < data.elements.length; i++) {
+      let pos;
+      let marker;
+      const e = data.elements[i];
+
+      if (e.id in this._ids) {
+        continue;
+      }
+
+      this._ids[e.id] = true;
+
+      if (e.type === 'node') {
+        pos = L.latLng(e.lat, e.lon);
+      } else {
+        pos = L.latLng(e.center.lat, e.center.lon);
+      }
+
+      if (this.options.markerIcon) {
+        marker = L.marker(pos, { icon: this.options.markerIcon });
+      } else {
+        marker = L.circle(pos, 8, {
+          stroke: false,
+          fillOpacity: 0.9
+        });
+      }
+
+      const popupContent = this._getPoiPopupHTML(e.tags, e.id);
+      const popup = L.popup().setContent(popupContent);
+      marker.bindPopup(popup);
+
+      this._markers.addLayer(marker);
+    }
+  }
+
+  function showError(errorText, error){
+    console.error(errorText);
+    console.error(error);
+    document.getElementById('toast').style.display = 'block'
+    document.getElementById('error').textContent = errorText || error
+  }
+
+
 
   function geoFindMe() {
 

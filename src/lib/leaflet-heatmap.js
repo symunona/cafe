@@ -149,7 +149,8 @@
                 generatedData.max = localMax;
                 generatedData.min = localMin;
             }
-
+            // console.log('from this', this._data)
+            // console.log('found points within', latLngPoints)
             generatedData.data = latLngPoints;
 
             this._heatmap.setData(generatedData);
