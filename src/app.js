@@ -10,17 +10,23 @@ requirejs([
   'overpass',
   'heatmap',
   'leaflet-heatmap-plugin',
-  'leaflet-search'
-], (_, L, OverPassLayer, HeatMap, HeatmapOverlay, LeafletSearch) => {
+  'leaflet-search',
+  'autolinker'
+], (_, L, OverPassLayer, HeatMap, HeatmapOverlay, LeafletSearch, Autolinker) => {
 
   const POSITION_LS_KEY = 'pos'
+  const AREA_CACHE_KEY = 'area-cache'
+  const CACHE_KEY = 'poi-cache'
 
   let attr_osm = 'Map data &copy; <a href="http://openstreetmap.org/">OpenStreetMap</a> contributors';
   let attr_overpass = 'POI via <a href="http://www.overpass-api.de/">Overpass API</a>';
 
+  let cache = JSON.parse(localStorage.getItem(CACHE_KEY) || '[]')
+  let cacheMap = {}; cache.map((c) => cacheMap[c.id] = c)
+
   const RADIUS = 0.001
 
-  let osm = new L.TileLayer(
+  let openStreetMapLayer = new L.TileLayer(
     'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     {
       'opacity': 1,
@@ -29,135 +35,86 @@ requirejs([
   );
 
   let map = new L.Map('c-map')
-    .addLayer(osm)
+    .addLayer(openStreetMapLayer)
     .setView(new L.LatLng(47.48942276367029, 19.05009221670925), 14);
 
-  map.on('moveend', (evt) => {
-    if (evt.target.getZoom() < 11) {
-      hideLayerData()
-    } else {
-      showData(cache)
-    }
-
-    var v = {
-      lat: map.getCenter().lat,
-      lng: map.getCenter().lng
-    };
-
-    // If we do not normalize the coords, heatmap and overpass layers will break.
-    v = map.wrapLatLng(v);
-    v.zoom = map.getZoom()
-
-    localStorage.setItem(POSITION_LS_KEY, JSON.stringify(v));
-
-    location.hash = `#${v.lat},${v.lng},${v.zoom}z`
-
-    document.getElementById('hit-count').textContent = layers['cafe']._heatmap.getData().data.length
-  })
-
-  function hideLayerData() {
-    Object.keys(interests).map((amenity) => {
-      layers[amenity].setData({ data: [], max: 2 })
-    })
-  }
-
-
-
-  let cache = []
-
-  let cfgGeneric = {
+  // Config at: https://www.patrick-wied.at/static/heatmapjs/plugin-leaflet-layer.html
+  let heatmapConfig = {
     // radius should be small ONLY if scaleRadius is true (or small radius is intended)
     // if scaleRadius is false it will be the constant radius used in pixels
-    radius: RADIUS,
-    maxOpacity: .5,
+    radius: RADIUS, maxOpacity: .5,
     // scales the radius based on map zoom
     scaleRadius: true,
     // if set to false the heatmap uses the global maximum for colorization
-    // if activated: uses the data maximum within the current map boundaries
-    //   (there will always be a red spot with useLocalExtremas true)
-    // "useLocalExtrema": true,
-    // which field name in your data represents the latitude - default "lat"
-    latField: 'lat',
-    // which field name in your data represents the longitude - default "lng"
-    lngField: 'lon',
-    // which field name in your data represents the data value - default "value"
-    valueField: 'count',
+    latField: 'lat', lngField: 'lon', valueField: 'count',
 
-    minOpacity: 0,
-    blur: .75
+    minOpacity: 0, blur: .75
   }
 
   const interests = {
     cafe: {
-      radius: 0.0006,
-      maxOpacity: .8,
-      blur: 0.6,
-      gradient: {
-        '.3': '#a9973d',
-        '.5': 'brown',
-        '.95': 'yellow'
-      }
+      radius: 0.0006, maxOpacity: .8, blur: 0.6,
+      gradient: { '.3': '#a9973d', '.5': 'brown', '.95': 'yellow' }
     },
     library: {
-      radius: 0.0008,
-      maxOpacity: .9,
-      blur: 0.5,
-      gradient: {
-        '.5': 'blue',
-        '.8': 'turquoise',
-        '.95': 'white'
-      }
+      radius: 0.0008, maxOpacity: .9, blur: 0.5,
+      gradient: { '.5': 'blue', '.8': 'turquoise', '.95': 'white' }
     },
     university: {
-      maxOpacity: .7,
-      radius: 0.001,
-      gradient: {
-        '.5': 'red',
-        '.8': 'pink',
-        '.95': 'white'
-      }
+      maxOpacity: .7, radius: 0.001,
+      gradient: { '.5': 'red', '.8': 'pink', '.95': 'white' }
     },
+    college: {
+      maxOpacity: .7, radius: 0.001,
+      gradient: { '.5': 'red', '.8': 'pink', '.95': 'white' }
+    }
   }
 
   let layers = window.layers = {}
 
   // Init heatmap layers.
   Object.keys(interests).map((amenity) => {
-    layers[amenity] = new HeatmapOverlay(_.extend({}, cfgGeneric, interests[amenity]));
+    layers[amenity] = new HeatmapOverlay(_.extend({}, heatmapConfig, interests[amenity]));
     map.addLayer(layers[amenity])
   })
 
-  let cacheMap = {}
-
   let queries = Object.keys(interests).map((amenity) => `node({{bbox}})[amenity=${amenity}];`).join('')
 
-
-
-  let opl = new L.OverPassLayer({
+  /**
+   * This is the layer on which the data points will be shown.
+   * It also manages cache
+   */
+  let overPassLayer = new L.OverPassLayer({
     query: `(${queries});out qt;`,
     minZoom: 13,
     minZoomIndicatorOptions: { minZoomMessage: 'Get closer to see the heatmap: CURRENTZOOM/MINZOOMLEVEL.' },
 
-    beforeRequest(){
-      loading(true)
-      // TODO: maybe cancel, when zoom level is too low?
-      // return false
-    },
+    // This way we give a chance to the cache to load.
+    noInitialRequest: true,
 
-    onError(error){
+    // We store a cache in the LS
+    loadedBounds: JSON.parse(localStorage.getItem(AREA_CACHE_KEY) || '[]'),
+
+    beforeRequest() { loading(true) },
+
+    onError(error) {
       loading(false)
-      showError(`[${error.statusCode}] ${error.statusText} - ${error.responseText}`, error);
+      showError(`[${error.status}] ${error.statusText} - ${error.responseText}`, error)
     },
 
+    /**
+     * Displays the loaded data, handles errors and keeps the cache up to date.
+     * @param {Object} data
+     */
     onSuccess: function (data) {
       data.elements.map((e) => e.count = 1)
 
       if (data.elements.length > 10000) {
-        showError('too much data... ' + data.elements.length);
+        showError('too much data... ' + data.elements.length)
         return;
       }
 
-      // Do not show an element twice.
+      // Filter duplicate element from the cache.
       data.elements.map((obj) => {
         if (!cacheMap[obj.id]) {
           cacheMap[obj.id] = obj
@@ -165,18 +122,89 @@ requirejs([
         }
       })
 
-      // The heatmap
+      // The heatmap and the poi circles
       showData(data.elements)
 
-      // Little clickable dots with popup
-      addMarkersToLayer.call(this, data)
-
       loading(false)
+
+      // Save cache and area bounds!
+      var loadedBounds = JSON.parse(localStorage.getItem(AREA_CACHE_KEY) || '[]')
+      loadedBounds = loadedBounds.concat(this._loadedBounds)
+      localStorage.setItem(AREA_CACHE_KEY, JSON.stringify(loadedBounds))
+      localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
 
       return data
     },
   });
 
+
+  // These functions are used from the UI.
+  window.findMe = geoFindMe
+  window.eraseCacheAndReload = function () {
+    localStorage.removeItem(POSITION_LS_KEY)
+    localStorage.removeItem(CACHE_KEY)
+    localStorage.removeItem(AREA_CACHE_KEY)
+    location.reload()
+  }
+
+  window.showInfo = function () { document.getElementById('modal').style.display = 'block' }
+  window.hideModal = function () { document.getElementById('modal').style.display = 'none' }
+  window.hideToast = function () { document.getElementById('toast').style.display = 'none' }
+
+  init()
+  /**
+   * Inits the bindings and puts the maps together
+   */
+  function init() {
+    // Bind move end to show the data and save position.
+    map.on('moveend', (evt) => {
+      if (evt.target.getZoom() < 11) { hideLayerData() } else { showData(cache) }
+
+      var v = { lat: map.getCenter().lat, lng: map.getCenter().lng };
+
+      // If we do not normalize the coords, heatmap and overpass layers will break.
+      v = map.wrapLatLng(v);
+      v.zoom = map.getZoom()
+
+      localStorage.setItem(POSITION_LS_KEY, JSON.stringify(v));
+      location.hash = `#${v.lat},${v.lng},${v.zoom}z`
+      document.getElementById('hit-count').textContent = layers['cafe']._heatmap.getData().data.length
+    })
+
+    /**
+     * Simple search button and box.
+     */
+    map.addControl(new LeafletSearch({
+      url: 'https://nominatim.openstreetmap.org/search?format=json&q={s}',
+      propertyName: 'display_name',
+      propertyLoc: ['lat', 'lon'],
+      marker: L.circleMarker([0, 0], { radius: 30 }),
+      autoCollapse: true,
+      autoType: true,
+      minLength: 2
+    }));
+
+    map.addLayer(overPassLayer)
+
+    // See if there is an URL to be found.
+    if (location.hash && location.hash.split(',').length === 3) {
+      let lat = parseFloat(location.hash.split(',')[0].substr(1))
+      let lng = parseFloat(location.hash.split(',')[1])
+      let zoom = parseInt(location.hash.split(',')[2])
+      map.setView(L.latLng(lat, lng), zoom, true)
+
+    } else {
+      restore(map)
+    }
+  }
+
+
+  ///////////////////////////////////////////////////////////////////////////////////////
+
+  /**
+   * Show loading in the head nav bar
+   * @param {Boolean} isLoading
+   */
   function loading(isLoading) {
     if (isLoading) {
       document.getElementById('head').classList.add('loading')
@@ -185,41 +213,26 @@ requirejs([
     }
   }
 
+  /**
+   * Shows the loaded data on all the layers, updates hit count.
+   * @param {Array} data
+   */
   function showData(data) {
     Object.keys(interests).map((amenity) => {
       let amenityList = _.filter(data, (e) => e.tags.amenity === amenity)
-      // console.log('found', amenity, amenityList.length)
       layers[amenity].setData({ data: amenityList, max: 2 })
     })
 
     document.getElementById('hit-count').textContent = layers['cafe']._heatmap.getData().data.length
+
+    // Little clickable dots with popup.
+    addMarkersToLayer.call(overPassLayer, data)
   }
 
-  // var searchLayer = L.layerGroup().addTo(map);
-  // map.addControl( new L.Control.Search({layer: searchLayer}) );
-  map.addControl(new LeafletSearch({
-    url: 'https://nominatim.openstreetmap.org/search?format=json&q={s}',
-    // jsonpParam: 'json_callback',
-    propertyName: 'display_name',
-    propertyLoc: ['lat', 'lon'],
-    marker: L.circleMarker([0, 0], { radius: 30 }),
-    autoCollapse: true,
-    autoType: true,
-    minLength: 2
-  }));
-
-  map.addLayer(opl)
-
-  if (location.hash && location.hash.split(',').length === 3) {
-    let lat = parseFloat(location.hash.split(',')[0].substr(1))
-    let lng = parseFloat(location.hash.split(',')[1])
-    let zoom = parseInt(location.hash.split(',')[2])
-    map.setView(L.latLng(lat, lng), zoom, true);
-  } else {
-    restore(map)
-  }
-
-
+  /**
+   * Restores the map from the LS.
+   * @param {Leaflet} map
+   */
   function restore(map) {
     try {
       let view = JSON.parse(localStorage.getItem(POSITION_LS_KEY) || '');
@@ -230,32 +243,15 @@ requirejs([
     }
   }
 
-  window.toggleInfo = function () {
-    toggle(document.getElementById(status))
-  }
-
-  function toggle(elem) {
-    elem.style.display = window.getComputedStyle(elem).display === 'block' ? 'none' : 'block'
-  }
-
-  window.findMe = geoFindMe
-
-  window.showInfo = function(){
-    document.getElementById('modal').style.display = 'block';
-  }
-  window.hideModal = function(){
-    document.getElementById('modal').style.display = 'none';
-  }
-
-  window.hideToast = function(){
-    document.getElementById('toast').style.display = 'none'
-  }
-
-  function addMarkersToLayer(data){
-    for (let i = 0; i < data.elements.length; i++) {
+  /**
+   * Shows the little circles with the popups
+   * @param {Array} data
+   */
+  function addMarkersToLayer(data, type) {
+    for (let i = 0; i < data.length; i++) {
       let pos;
       let marker;
-      const e = data.elements[i];
+      const e = data[i];
 
       if (e.id in this._ids) {
         continue;
@@ -273,48 +269,85 @@ requirejs([
         marker = L.marker(pos, { icon: this.options.markerIcon });
       } else {
         marker = L.circle(pos, 8, {
-          stroke: false,
-          fillOpacity: 0.9
+          stroke: false, fillOpacity: 0.9, fillColor: getColor(e.tags?e.tags.amenity:'')
         });
       }
 
-      const popupContent = this._getPoiPopupHTML(e.tags, e.id);
-      const popup = L.popup().setContent(popupContent);
-      marker.bindPopup(popup);
+      marker.bindPopup(L.popup().setContent(getPopup(e.tags)))
 
-      this._markers.addLayer(marker);
+      this._markers.addLayer(marker)
     }
   }
 
-  function showError(errorText, error){
+  function getPopup(data) {
+    let list = ''
+    let name = data.name || data[Object.keys(data).find((key)=>key.indexOf('name') > -1)]
+    Object.keys(data)
+      .filter((n) => ['amenity', 'name'].indexOf(n) === -1)
+      .map((key) => list += `<tr><td>${key}</td><td>${stringify(data[key])}</td></tr>`)
+    return `<div><h3><i class="fa fa-fw fa-${getIcon(data)}"></i> <span>${name}</span></h3><table>${list}</table></div>`
+  }
+
+  function getIcon(data) {
+    switch (data.amenity) {
+      case 'cafe': return 'coffee'
+      case 'library': return 'book-reader'
+      case 'university':
+      case 'college': return 'university'
+    }
+  }
+
+  function getColor(amenity){
+    switch (amenity) {
+      case 'cafe': return '#46291566'
+      case 'library': return '#0000ff77'
+      case 'university':
+      case 'college': return '#ff000077'
+    }
+  }
+
+  function stringify(str) {
+    if (_.isArray(str)) { return str.join(', ') }
+    return Autolinker.link(str, { stripPrefix: true })
+  }
+
+  function showError(errorText, error) {
     console.error(errorText);
     console.error(error);
     document.getElementById('toast').style.display = 'block'
-    document.getElementById('error').textContent = errorText || error
+    document.getElementById('error').textContent = stripHtml(errorText || error)
   }
 
-
+  function hideLayerData() {
+    Object.keys(interests).map((amenity) => {
+      layers[amenity].setData({ data: [], max: 2 })
+    })
+  }
 
   function geoFindMe() {
-
     function success(position) {
-      const lat = position.coords.latitude;
-      const lng = position.coords.longitude;
-      map.setView(L.latLng(lat, lng), 13, true);
+      const lat = position.coords.latitude
+      const lng = position.coords.longitude
+      loading(false)
+      map.setView(L.latLng(lat, lng), 13, true)
     }
 
     function error() {
-      console.error('Unable to retrieve your location');
+      showError('Unable to retrieve your location')
     }
 
     if (!navigator.geolocation) {
-      // status.textContent = 'Geolocation is not supported by your browser';
+      showError('Geolocation is not supported by your browser')
     } else {
-      // status.textContent = 'Locating…';
+      loading(true)
       navigator.geolocation.getCurrentPosition(success, error);
     }
   }
 
-
+  function stripHtml(html) {
+    let tmp = document.createElement("DIV");
+    tmp.innerHTML = html;
+    return tmp.textContent || tmp.innerText || "";
+  }
 })
 

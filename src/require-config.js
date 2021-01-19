@@ -8,7 +8,8 @@ var requireConfig = {
       'clipper': 'lib/clipper',
       'min-zoom-indicator': 'lib/min-zoom-indicator',
       'leaflet-heatmap-plugin': 'lib/leaflet-heatmap',
-      'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src'
+      'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src',
+      'autolinker': '../node_modules/autolinker/dist/Autolinker'
     },
     shim: {
       'leaflet': { exports: 'L' },

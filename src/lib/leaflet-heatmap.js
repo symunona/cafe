@@ -152,8 +152,12 @@
             // console.log('from this', this._data)
             // console.log('found points within', latLngPoints)
             generatedData.data = latLngPoints;
-
-            this._heatmap.setData(generatedData);
+            try{
+                this._heatmap.setData(generatedData);
+            } catch(e){
+                // Sometimes this throws an error, if you are zoomed out too far.
+                // It could handle that more gracefully.
+            }
         },
         setData: function (data) {
             this._max = data.max || this._max;

@@ -33,7 +33,7 @@
 </head>
 
 <body>
-  <nav id="head">
+  <nav id="head" onclick="showInfo()">
     <i class="fa fa-coffee"></i>
     <span class="loading">
       <i class='fa fa-circle-notch fa-spin'></i>
@@ -42,41 +42,31 @@
     <span id="hit-count"></span>
   </nav>
 
-  <nav class="what" onclick="showInfo()">
-    <a class="link">
-      <i class="fa fa-question"></i>
-    </a>
-  </nav>
-
   <div id="c-map"></div>
 
   <div id="modal" onclick="hideModal()">
     <div class="content">
       <h1>What's this?</h1>
       <p>
-        A Hipster district finder.
+        A café heat map.
         During my travels I noticed a correlation between the density of
         cafés and how lively the neighborhood is.
+        Also, it's usually where the hipsters are.
       </p>
       <p>
-        This little map is an experiment to aid me finding nice areas
-        where I am more likely to bump into my next favorite place.
+        This is an experiment to aid me finding nice areas in cities I travel.
+        Maybe I bump into my next favorite place with the help of this once?
       </p>
 
       <p>
         It works with OpenStreetMap data, uses the Overpass API and it's not
-        accurate. It gets the job done though.
+        accurate but it gets the job done.
       </p>
 
-      <h3>Legend</h3>
       <p>
-        Other things might as well be interesting, so I created multiple layers
-        <ul>
-          <li>Brown-yellow areas are cafés</li>
-          <li>Reds are universities</li>
-          <li>Blues are libraries</li>
-        </ul>
+        It also shows universities (red) and libraries (blue)
         <img src="img/legend.png">
+        <a class="clickable" onclick="eraseCacheAndReload()">click here to erase cache and reload</a>
       </p>
       <p><i class="fa fa-code"></i> with <i class="fa fa-heart"></i> by <a href="https://github.com/symunona" target="_blank">goose</a></p>
     </div>

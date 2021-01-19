@@ -24,6 +24,7 @@
   "homepage": "https://github.com/symunona/cafe#readme",
   "dependencies": {
     "@fortawesome/fontawesome-free": "^5.15.1",
+    "autolinker": "^3.14.2",
     "font-awesome": "^4.7.0",
     "grunt": "^1.3.0",
     "grunt-contrib-cssmin": "^3.0.0",

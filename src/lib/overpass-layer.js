@@ -286,9 +286,11 @@ define(['leaflet', 'clipper', 'min-zoom-indicator'], (L, ClipperLib, MinZoomIndi
       const loadedBounds = this._getLoadedBounds();
 
       if (this._isFullyLoadedBounds(bounds, loadedBounds)) {
+        // console.log('area fully loaded')
         this._setRequestInProgress(false);
         return;
       }
+      // console.log('area is not loaded, sending request', bounds, loadedBounds)
 
       const requestBounds = this._buildLargerBounds(bounds);
       const url = this._buildOverpassUrlFromEndPointAndQuery(

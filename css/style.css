@@ -1,5 +1,6 @@
 body { padding: 0; height: 100vh; font-family: Helvetica, sans-serif; }
 
+/* Site ID an `how many coffees?` indicator */
 nav {
     background: rgba(70, 41, 21, 0.8);
     color: white;
@@ -11,14 +12,12 @@ nav {
     position: absolute; z-index: 100000;
     overflow: hidden;
     transition: width 0.3s;
+    cursor: pointer;
 }
 nav#head {top: 17px; left: 1em; }
 nav.what {top: 17px; right: 1em; }
 
-.leaflet-marker-icon.leaflet-interactive, .leaflet-image-layer.leaflet-interactive, .leaflet-pane > svg path.leaflet-interactive, svg.leaflet-image-layer.leaflet-interactive path{
-    fill: #996666e0;
-}
-
+/* Loading icon and coffee */
 #head .loading{
     display: none;
     /* Note that line-height is only 2.9 for alignment issues */
@@ -32,29 +31,33 @@ nav.what {top: 17px; right: 1em; }
 
 nav svg{ height: 10px; }
 nav svg path{ fill: white }
-#c-map{ height: 100% }
-#status{ height: 100px; width: 80px; background: white; border-radius: 5px; padding: 5px;
-    position: absolute; bottom: 20px; right: 20px; z-index: 1000; opacity: .8; }
 
-#map-link{ position: absolute; top: 45px; height: 20px; width: 20px; right: 20px; }
-#find-me{ position: absolute; bottom: 45px; height: 20px; width: 20px; right: 20px; z-index: 1001; font-size: 10px; padding: 0; text-align: center;}
-#loading{ display: none; color: white; position: absolute; bottom: 15px; height: 20px; width: 20px; left: 20px; }
 
 a{ color: white; }
 a:visited{ color: #ccc; }
 .site-id{ text-decoration: none; }
 .content{ max-width: 600px; margin: 0 auto; padding: 20px;}
 
+/* POI Popup */
+.leaflet-popup-content{ color: rgba(70, 41, 21); }
+.leaflet-popup-content h3 span,
+.leaflet-popup-content h3 i{ vertical-align: middle; }
+.leaflet-popup-content-wrapper {overflow: hidden;}
+
+/* Leaflet and it's buttons */
+#c-map{ height: 100% }
+#status{ height: 100px; width: 80px; background: white; border-radius: 5px; padding: 5px;
+    position: absolute; bottom: 20px; right: 20px; z-index: 1000; opacity: .8; }
+
+#map-link{ position: absolute; top: 45px; height: 20px; width: 20px; right: 20px; }
+#find-me{ position: absolute; bottom: 45px; height: 20px; width: 20px; right: 20px; z-index: 1001; font-size: 10px; padding: 0; text-align: center;}
+
 .leaflet-zoom-hide { position: absolute!important; }
+/* Site ID icon*/
+.leaflet-top.leaflet-left{ top: 12em; left: 4em; }
 
-.leaflet-top.leaflet-left{
-    top: 12em;
-    left: 4em;
-}
-
-.leaflet-top.leaflet-right{
-    right: 12em; top: 3em;
-}
+/* Zoom error message positioning */
+.leaflet-top.leaflet-right{ right: 12em; top: 3em; }
 
 .leaflet-control-search .search-button{
     font-family: 'Font Awesome 5 Pro';
@@ -101,17 +104,19 @@ a:visited{ color: #ccc; }
     color: #111;
 }
 
+/* Info modal */
 #modal{
     top: calc( 50% - 300px ); display: none; width: 100vw;
     position: absolute; z-index: 100000;
 }
 #modal .content {
     width: 400px; margin: 0 auto;
-    border-radius: 1em;
-    background:rgba(70, 41, 21, 0.8);
-    color: white;
+    border-radius: 1em; padding-bottom: 5px;
+    background:rgba(70, 41, 21, 0.8); color: white;
 }
-#modal img{ max-width: 100%; }
+#modal img{ max-width: 100% }
+#modal.shown{ display: block }
+#modal h1{ margin-top: 0 }
 
 #toast{
     bottom: 200px; display: none; width: 100vw;
@@ -125,6 +130,4 @@ a:visited{ color: #ccc; }
     padding: 1em;
 }
 
-#modal.shown{ display: block; }
-
-
+.clickable:hover { text-decoration: underline; cursor: pointer; }
