@@ -5,27 +5,26 @@ nav {
     background: rgba(70, 41, 21, 0.8);
     color: white;
     box-sizing: border-box;
-    height: 3em; line-height: 3em; min-width: 3em; text-align: center;
-    border-radius: 1.5em;
-    padding-right: 0.7em; padding-left: 0.7em;
+    height: 2em; line-height: 2em; min-width: 2em; text-align: center;
+    border-radius: 1em;
+    padding-left: 0.5em; padding-right: 0.5em;
     font-size: 2em;
     position: absolute; z-index: 100000;
     overflow: hidden;
-    transition: width 0.3s;
     cursor: pointer;
 }
-nav#head {top: 17px; left: 1em; }
-nav.what {top: 17px; right: 1em; }
+nav#head {top: 1.3em; left: 1.3em; }
 
 /* Loading icon and coffee */
+#head{ transition: width 0.3s; }
 #head .loading{
     display: none;
     /* Note that line-height is only 2.9 for alignment issues */
-    position: absolute; top: 0; left: 0; height: 3em; width: 3em; line-height: 2.9em; }
-#head .fa{ font-size: 2em; vertical-align: middle; transition: font-size 0.3s; }
-#head .fa-coffee { font-size: 1.2em; transition: font-size 0.3s; }
+    position: absolute; top: 0; left: 0; height: 2em; width: 2em; line-height: 1.91em; }
+#head .fa{ font-size: 1em; vertical-align: middle; transition: font-size 0.3s; }
+#head .fa-coffee { font-size: 0.8em; transition: font-size 0.3s; }
 #head.loading { transition: width 0.3s; }
-#head.loading .fa-coffee { font-size: 0.6em; transition: font-size 0.3s; }
+#head.loading .fa-coffee { font-size: 0.3em; transition: font-size 0.3s; }
 #head.loading .loading { display: block }
 #head.loading #hit-count{ display: none }
 
@@ -123,7 +122,7 @@ a:visited{ color: #ccc; }
     position: absolute; z-index: 100000;
 }
 #toast #error{
-    width: 500px; margin: 0 auto;
+    width: 400px; margin: 0 auto;
     border-radius: 1em;
     background:rgba(70, 41, 21, 0.8);
     color: white;
@@ -131,3 +130,10 @@ a:visited{ color: #ccc; }
 }
 
 .clickable:hover { text-decoration: underline; cursor: pointer; }
+
+@media(max-width: 400px){
+    #modal { top: 0;}
+    #modal .content { width: calc( 100% - 10px ); margin: 0; border-radius: 0; background: rgba(70, 41, 21, 1); padding: 5px;}
+    #toast #error{ width: 80vw; margin: 0 auto; }
+}
+
