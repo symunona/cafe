@@ -32110,12 +32110,17 @@ requirejs([
   let openStreetMapLayer = new L.TileLayer(
     'http://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
     {
-      'opacity': 1,
-      'attribution': [attr_osm, attr_overpass].join(', ')
+      opacity: 1,
+      attribution: [attr_osm, attr_overpass].join(', ')
     }
   );
 
-  let map = new L.Map('c-map')
+  let map = new L.Map('c-map', {
+    // Would be nicer to let it move around, and fix heatmap rendering,
+    // but I did not find an easy way to do so, so until then, I just
+    // limit going around
+    maxBounds: L.latLngBounds(L.latLng(-90, -180), L.latLng(90, 180))
+  })
     .addLayer(openStreetMapLayer)
     .setView(new L.LatLng(47.48942276367029, 19.05009221670925), 14);
 
@@ -32177,6 +32182,8 @@ requirejs([
     loadedBounds: JSON.parse(localStorage.getItem(AREA_CACHE_KEY) || '[]'),
 
     beforeRequest() { loading(true) },
+
+
 
     onError(error) {
       loading(false)
@@ -32350,7 +32357,7 @@ requirejs([
         marker = L.marker(pos, { icon: this.options.markerIcon });
       } else {
         marker = L.circle(pos, 8, {
-          stroke: false, fillOpacity: 0.9, fillColor: getColor(e.tags?e.tags.amenity:'')
+          stroke: false, fillOpacity: 0.9, fillColor: getColor(e.tags ? e.tags.amenity : '')
         });
       }
 
@@ -32362,7 +32369,7 @@ requirejs([
 
   function getPopup(data) {
     let list = ''
-    let name = data.name || data[Object.keys(data).find((key)=>key.indexOf('name') > -1)]
+    let name = data.name || data[Object.keys(data).find((key) => key.indexOf('name') > -1)]
     Object.keys(data)
       .filter((n) => ['amenity', 'name'].indexOf(n) === -1)
       .map((key) => list += `<tr><td>${key}</td><td>${stringify(data[key])}</td></tr>`)
@@ -32378,7 +32385,7 @@ requirejs([
     }
   }
 
-  function getColor(amenity){
+  function getColor(amenity) {
     switch (amenity) {
       case 'cafe': return '#46291566'
       case 'library': return '#0000ff77'
