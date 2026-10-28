@@ -67,10 +67,9 @@ module.exports = function (grunt) {
                 },
                 files: {'css/bundle.min.css': [
                     'css/normalize.css',
-                    'css/style.css',
                     'node_modules/leaflet/dist/leaflet.css',
-                    'node_modules/leaflet-overpass-layer/dist/OverPassLayer.css',
-                    'node_modules/leaflet-search/dist/leaflet-search.src.css'
+                    'node_modules/leaflet-search/dist/leaflet-search.src.css',
+                    'css/style.css'
                 ]}
             }
         }

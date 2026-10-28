@@ -1,139 +1,187 @@
-body { padding: 0; height: 100vh; font-family: Helvetica, sans-serif; }
+:root {
+    --coffee: #462915;
+    --coffee-glass: rgba(70, 41, 21, 0.88);
+    --crema: #f3e3cf;
+    --crema-dim: #d9c1a5;
+    --accent: #f5a623;
+}
 
-/* Site ID an `how many coffees?` indicator */
+html, body { height: 100%; }
+body { margin: 0; padding: 0; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #ece8e3; }
+
+#c-map { height: 100%; background: #ece8e3; }
+
+.leaflet-tile-pane { filter: grayscale(0.85) brightness(1.12) contrast(0.72) sepia(0.06); }
+
 nav {
-    background: rgba(70, 41, 21, 0.8);
-    color: white;
+    background: var(--coffee-glass);
+    color: var(--crema);
     box-sizing: border-box;
     height: 2em; line-height: 2em; min-width: 2em; text-align: center;
     border-radius: 1em;
-    padding-left: 0.5em; padding-right: 0.5em;
-    font-size: 2em;
-    position: absolute; z-index: 100000;
+    padding: 0 0.6em;
+    font-size: 1.6em;
+    position: absolute; z-index: 1001;
     overflow: hidden;
     cursor: pointer;
+    box-shadow: 0 2px 10px rgba(40, 20, 5, 0.3);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    user-select: none;
 }
-nav#head {top: 1.3em; left: 1.3em; }
+nav#head { top: 14px; left: 14px; transition: width 0.3s; white-space: nowrap; }
+nav#head:hover { background: rgba(70, 41, 21, 0.96); }
 
-/* Loading icon and coffee */
-#head{ transition: width 0.3s; }
-#head .loading{
+#head .loading {
     display: none;
-    /* Note that line-height is only 2.9 for alignment issues */
-    position: absolute; top: 0; left: 0; height: 2em; width: 2em; line-height: 1.91em; }
-#head .fa{ font-size: 1em; vertical-align: middle; transition: font-size 0.3s; }
+    position: absolute; top: 0; left: 0; height: 2em; width: 2em; line-height: 2em; }
+#head .fa { font-size: 1em; vertical-align: middle; transition: font-size 0.3s; }
 #head .fa-coffee { font-size: 0.8em; transition: font-size 0.3s; }
-#head.loading { transition: width 0.3s; }
-#head.loading .fa-coffee { font-size: 0.3em; transition: font-size 0.3s; }
-#head.loading .loading { display: block }
-#head.loading #hit-count{ display: none }
+#head.loading .fa-coffee { font-size: 0.3em; }
+#head.loading .loading { display: block; }
+#head.loading #hit-count { display: none; }
+#hit-count { font-size: 0.75em; font-weight: 600; vertical-align: middle; margin-left: 0.15em; }
+#hit-count:empty { display: none; }
 
-nav svg{ height: 10px; }
-nav svg path{ fill: white }
+a { color: var(--accent); }
+a:visited { color: var(--accent); }
 
+.leaflet-control-attribution { background: rgba(255, 255, 255, 0.7) !important; }
+.leaflet-control-attribution a, .leaflet-control-attribution a:visited { color: #6f4e37; }
 
-a{ color: white; }
-a:visited{ color: #ccc; }
-.site-id{ text-decoration: none; }
-.content{ max-width: 600px; margin: 0 auto; padding: 20px;}
+.leaflet-top.leaflet-left { top: 70px; }
 
-/* POI Popup */
-.leaflet-popup-content{ color: rgba(70, 41, 21); }
-.leaflet-popup-content h3 span,
-.leaflet-popup-content h3 i{ vertical-align: middle; }
-.leaflet-popup-content-wrapper {overflow: hidden;}
+.leaflet-bar, .leaflet-control-search {
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(40, 20, 5, 0.25) !important;
+    border-radius: 8px !important;
+    overflow: hidden;
+}
+.leaflet-bar a, .leaflet-bar a:hover { color: var(--coffee); }
 
-/* Leaflet and it's buttons */
-#c-map{ height: 100% }
-#status{ height: 100px; width: 80px; background: white; border-radius: 5px; padding: 5px;
-    position: absolute; bottom: 20px; right: 20px; z-index: 1000; opacity: .8; }
+.leaflet-control-minZoomIndicator {
+    font-size: 14px; font-weight: 500; line-height: 20px;
+    background: var(--coffee-glass); color: var(--crema);
+    padding: 8px 14px; border-radius: 18px;
+    box-shadow: 0 2px 10px rgba(40, 20, 5, 0.3);
+    cursor: pointer;
+}
 
-#map-link{ position: absolute; top: 45px; height: 20px; width: 20px; right: 20px; }
-#find-me{ position: absolute; bottom: 45px; height: 20px; width: 20px; right: 20px; z-index: 1001; font-size: 10px; padding: 0; text-align: center;}
-
-.leaflet-zoom-hide { position: absolute!important; }
-/* Site ID icon*/
-.leaflet-top.leaflet-left{ top: 12em; left: 4em; }
-
-/* Zoom error message positioning */
-.leaflet-top.leaflet-right{ right: 12em; top: 3em; }
-
-.leaflet-control-search .search-button{
-    font-family: 'Font Awesome 5 Pro';
+.leaflet-control-search .search-button {
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
     -moz-osx-font-smoothing: grayscale;
     -webkit-font-smoothing: antialiased;
     display: inline-block;
     font-style: normal;
-    font-variant: normal;
-    text-rendering: auto;
     line-height: 1;
     text-decoration: none;
     background: white !important;
 }
-
-.leaflet-control-search .search-cancel:before{
+.leaflet-control-search .search-button:before {
+    content: "\f002";
+    display: block;
+    margin: 0 auto;
+    padding: 7px;
+    font-size: 16px;
+    color: var(--coffee);
+}
+.leaflet-control-search .search-cancel {
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    display: inline-block;
+    font-style: normal;
+    line-height: 1;
+    text-decoration: none;
+    background: transparent !important;
+}
+.leaflet-control-search .search-cancel:before {
     content: "\f00d";
-    font-family: 'Font Awesome 5 Pro';
     display: block;
     margin: 0 auto;
     padding: 2px;
     font-size: 16px;
     color: #111;
 }
-.leaflet-control-search .search-cancel{
-    font-family: 'Font Awesome 5 Pro';
-    -moz-osx-font-smoothing: grayscale;
-    -webkit-font-smoothing: antialiased;
-    display: inline-block;
-    font-style: normal;
-    font-variant: normal;
-    text-rendering: auto;
-    line-height: 1;
-    text-decoration: none;
-    background: transparent !important;
-}
+.leaflet-control-search .search-input { height: 26px; font-size: 14px; }
+.leaflet-control-search .search-tooltip { font-size: 13px; }
 
-.leaflet-control-search .search-button:before{
-    font-family: 'Font Awesome 5 Pro';
-    content: "\f002";
-    display: block;
-    margin: 0 auto;
-    padding: 7px;
-    font-size: 16px;
-    color: #111;
-}
+.leaflet-popup-content-wrapper { border-radius: 10px; }
+.leaflet-popup-content { color: var(--coffee); margin: 10px 14px; }
+.leaflet-popup-content h3 { margin: 0 0 6px; font-size: 15px; }
+.leaflet-popup-content a, .leaflet-popup-content a:visited { color: #8a5a2b; }
 
-/* Info modal */
-#modal{
-    top: calc( 50% - 300px ); display: none; width: 100vw;
-    position: absolute; z-index: 100000;
+#find-me {
+    position: absolute; bottom: 36px; right: 12px; z-index: 1001;
+    width: 36px; height: 36px; border-radius: 50%; border: none;
+    background: var(--coffee-glass); color: var(--crema);
+    font-size: 15px; padding: 0; cursor: pointer;
+    box-shadow: 0 2px 10px rgba(40, 20, 5, 0.3);
 }
+#find-me:hover { background: var(--coffee); }
+
+.leaflet-zoom-hide { position: absolute !important; }
+
+#modal {
+    display: none;
+    position: fixed; inset: 0; z-index: 100000;
+    background: rgba(30, 18, 8, 0.35);
+    overflow-y: auto;
+    padding: 16px;
+    box-sizing: border-box;
+}
+#modal.shown { display: flex; align-items: center; justify-content: center; }
 #modal .content {
-    width: 400px; margin: 0 auto;
-    border-radius: 1em; padding-bottom: 5px;
-    background:rgba(70, 41, 21, 0.8); color: white;
+    position: relative;
+    width: 100%; max-width: 440px;
+    box-sizing: border-box;
+    padding: 22px 24px 16px;
+    border-radius: 16px;
+    background: var(--coffee-glass);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    color: var(--crema);
+    line-height: 1.5;
+    font-size: 15px;
+    box-shadow: 0 10px 40px rgba(20, 10, 0, 0.45);
 }
-#modal img{ max-width: 100% }
-#modal.shown{ display: block }
-#modal h1{ margin-top: 0 }
+#modal h1 { margin: 0 0 10px; font-size: 22px; color: #fff; }
+#modal h1 .fa { color: var(--accent); }
+#modal p { margin: 10px 0; }
+#modal .close {
+    position: absolute; top: 12px; right: 12px;
+    width: 30px; height: 30px; border-radius: 50%; border: none;
+    background: rgba(255, 255, 255, 0.1); color: var(--crema); cursor: pointer;
+}
+#modal .close:hover { background: rgba(255, 255, 255, 0.2); }
+#modal .legend { list-style: none; padding: 10px 12px; margin: 12px 0; background: rgba(0, 0, 0, 0.18); border-radius: 10px; }
+#modal .legend li { display: flex; align-items: center; gap: 10px; padding: 3px 0; }
+#modal .legend b { margin-left: auto; font-variant-numeric: tabular-nums; color: #fff; }
+#modal .swatch { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+#modal .swatch.cafe { background: radial-gradient(circle, #fff3b0 0%, #f5a623 35%, #d2691e 65%, #9c6b3f 100%); }
+#modal .swatch.library { background: radial-gradient(circle, #e3fbff 0%, #4fc3e8 40%, #2f6fd6 100%); }
+#modal .swatch.university { background: radial-gradient(circle, #ffe3e3 0%, #ff7f7f 40%, #e74c3c 100%); }
+#modal .snapshot { color: #fff; }
+#modal .snapshot .fa { color: var(--accent); margin-right: 4px; }
+#modal .small { font-size: 12px; color: var(--crema-dim); }
+#modal .footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 12px; margin-bottom: 0; }
 
-#toast{
-    bottom: 200px; display: none; width: 100vw;
+#toast {
+    bottom: 90px; display: none; width: 100%;
     position: absolute; z-index: 100000;
 }
-#toast #error{
-    width: 400px; margin: 0 auto;
-    border-radius: 1em;
-    background:rgba(70, 41, 21, 0.8);
-    color: white;
+#toast #error {
+    max-width: 400px; margin: 0 auto;
+    border-radius: 12px;
+    background: var(--coffee-glass);
+    color: var(--crema);
     padding: 1em;
+    box-sizing: border-box;
 }
 
-.clickable:hover { text-decoration: underline; cursor: pointer; }
-
-@media(max-width: 400px){
-    #modal { top: 0;}
-    #modal .content { width: calc( 100% - 10px ); margin: 0; border-radius: 0; background: rgba(70, 41, 21, 1); padding: 5px;}
-    #toast #error{ width: 80vw; margin: 0 auto; }
+@media (max-width: 480px) {
+    nav { font-size: 1.3em; }
+    #modal { padding: 8px; }
+    #modal .content { padding: 18px 16px 12px; }
+    #toast #error { width: calc(100% - 32px); }
 }
-

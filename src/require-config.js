@@ -1,19 +1,15 @@
 var requireConfig = {
     paths: {
       'underscore': '../node_modules/underscore/underscore',
-      'jquery': '../node_modules/jquery/dist/jquery.slim',
       'leaflet': '../node_modules/leaflet/dist/leaflet-src',
       'heatmap': '../node_modules/heatmap.js/build/heatmap',
-      'overpass': 'lib/overpass-layer',
-      'clipper': 'lib/clipper',
+      'tile-data': 'lib/tile-data',
       'min-zoom-indicator': 'lib/min-zoom-indicator',
       'leaflet-heatmap-plugin': 'lib/leaflet-heatmap',
-      'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src',
-      'autolinker': '../node_modules/autolinker/dist/Autolinker'
+      'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src'
     },
     shim: {
       'leaflet': { exports: 'L' },
-      'clipper': { exports: 'ClipperLib' },
       'heatmap': { deps: ['leaflet'], exports: 'HeatmapOverlay' }
     }
   }

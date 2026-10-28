@@ -19,14 +19,12 @@
   <link rel="stylesheet" href="css/bundle.min.css">
   /build -->
 
-  <link rel="stylesheet" href="https://pro.fontawesome.com/releases/v5.10.0/css/all.css" integrity="sha384-AYmEC3Yw5cVb3ZcuHtOA93w35dYTsvhLPVnYs9eStHfGJvOvKxVfELGroGkvsg+p" crossorigin="anonymous"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer"/>
   <!-- build:remove -->
   <link rel="stylesheet" href="css/normalize.css">
-  <link rel="stylesheet" href="css/style.css">
-
   <link rel="stylesheet" href="node_modules/leaflet/dist/leaflet.css"/>
-  <link rel="stylesheet" href="node_modules/leaflet-overpass-layer/dist/OverPassLayer.css"/>
   <link rel="stylesheet" href="node_modules/leaflet-search/dist/leaflet-search.src.css"/>
+  <link rel="stylesheet" href="css/style.css">
   <!--/build-->
 
   <meta name="theme-color" content="#6f4e37">
@@ -45,35 +43,43 @@
   <div id="c-map"></div>
 
   <div id="modal" onclick="hideModal()">
-    <div class="content">
-      <h1>What's this?</h1>
+    <div class="content" onclick="event.stopPropagation()">
+      <button class="close" onclick="hideModal()" aria-label="Close"><i class="fa fa-times"></i></button>
+      <h1><i class="fa fa-coffee"></i> Café heatmap</h1>
       <p>
-        A café heat map.
         During my travels I noticed a correlation between the density of
         cafés and how lively the neighborhood is.
-      </p>
-      <p>
-        This is an experiment to aid me finding nice areas in cities I travel to.
-        Maybe I bump into my next favorite place with the help of this once?
+        This map helps me find nice areas in cities I travel to.
+        Maybe I bump into my next favorite place with the help of it once?
       </p>
 
-      <p>
-        It works with OpenStreetMap data, uses the Overpass API and it's not
-        accurate but it gets the job done.
-      </p>
+      <ul class="legend">
+        <li><span class="swatch cafe"></span> Cafés <b id="count-cafe"></b></li>
+        <li><span class="swatch library"></span> Libraries <b id="count-library"></b></li>
+        <li><span class="swatch university"></span> Universities &amp; colleges <b id="count-university"></b></li>
+      </ul>
 
       <p>
-        It also shows universities (red) and libraries (blue)
-        <img src="img/legend.png">
-        <a class="clickable" onclick="eraseCacheAndReload()">click here to erase cache and reload</a>
+        The data is a snapshot of <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>,
+        extracted with <a href="https://qlever.dev" target="_blank" rel="noopener">QLever</a> and served as static tiles,
+        so it is fast, but not live. It's not accurate, but it gets the job done.
+      </p>
+      <p class="snapshot">
+        <i class="fa fa-database"></i> Data snapshot: <b id="snapshot-date">loading…</b>
+      </p>
+      <p class="small">
+        Map data &copy; OpenStreetMap contributors, available under the
+        <a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">Open Database License</a>.
       </p>
 
-      <p>
-        <span style="float: right">
-          <i class="fa fa-code-branch"></i>
-          <a href="https://github.com/symunona/cafe">Fork me on GitHub!</a>
+      <p class="footer">
+        <span>
+          <i class="fa fa-code"></i> with <i class="fa fa-heart"></i> by <a href="https://github.com/symunona" target="_blank" rel="noopener">goose</a>
         </span>
-        <i class="fa fa-code"></i> with <i class="fa fa-heart"></i> by <a href="https://github.com/symunona" target="_blank">goose</a>
+        <span>
+          <i class="fa fa-code-branch"></i>
+          <a href="https://github.com/symunona/cafe" target="_blank" rel="noopener">Fork me on GitHub</a>
+        </span>
       </p>
     </div>
   </div>
