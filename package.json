@@ -6,7 +6,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "grunt",
-    "pull-data": "node scripts/pull-data.mjs"
+    "pull-data": "node scripts/pull-data.mjs",
+    "perf": "node scripts/perf.mjs"
   },
   "repository": {
     "type": "git",
@@ -33,7 +34,6 @@
     "grunt-contrib-uglify": "^5.0.0",
     "grunt-contrib-uglify-es": "github:gruntjs/grunt-contrib-uglify#harmony",
     "grunt-processhtml": "^0.4.2",
-    "heatmap.js": "^2.0.5",
     "jquery": "^3.5.1",
     "leaflet": "^1.7.1",
     "leaflet-search": "2.9.8",

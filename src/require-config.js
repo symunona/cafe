@@ -2,15 +2,13 @@ var requireConfig = {
     paths: {
       'underscore': '../node_modules/underscore/underscore',
       'leaflet': '../node_modules/leaflet/dist/leaflet-src',
-      'heatmap': '../node_modules/heatmap.js/build/heatmap',
       'tile-data': 'lib/tile-data',
       'min-zoom-indicator': 'lib/min-zoom-indicator',
-      'leaflet-heatmap-plugin': 'lib/leaflet-heatmap',
+      'heat-layer': 'lib/heat-layer',
       'leaflet-search': '../node_modules/leaflet-search/dist/leaflet-search.src'
     },
     shim: {
-      'leaflet': { exports: 'L' },
-      'heatmap': { deps: ['leaflet'], exports: 'HeatmapOverlay' }
+      'leaflet': { exports: 'L' }
     }
   }
 

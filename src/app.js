@@ -2,16 +2,17 @@ requirejs.config(window.requireConfig)
 
 requirejs([
   'leaflet',
-  'leaflet-heatmap-plugin',
+  'heat-layer',
   'leaflet-search',
   'min-zoom-indicator',
   'tile-data'
-], (L, HeatmapOverlay, LeafletSearch, MinZoomIndicator, TileData) => {
+], (L, HeatLayer, LeafletSearch, MinZoomIndicator, TileData) => {
 
   const POSITION_LS_KEY = 'pos'
   const MIN_ZOOM = 10
   const DOT_ZOOM = 16
   const MAX_DOTS = 3000
+  const RENDER_DELAY = 120
   const DEFAULT_VIEW = { lat: 47.4975, lng: 19.0532, zoom: 14 }
 
   const ATTRIBUTION = [
@@ -50,29 +51,20 @@ requirejs([
     attribution: ATTRIBUTION
   }).addTo(map)
 
-  const layers = {}
-  Object.keys(interests).forEach((type) => {
-    const opts = interests[type]
-    layers[type] = new HeatmapOverlay({
-      radius: opts.minRadius,
-      scaleRadius: false,
-      useLocalExtrema: false,
-      latField: 'lat',
-      lngField: 'lon',
-      valueField: 'count',
-      minOpacity: 0,
-      maxOpacity: opts.maxOpacity,
-      blur: opts.blur,
-      gradient: opts.gradient
-    })
-    map.addLayer(layers[type])
-  })
+  const heat = new HeatLayer({ resolution: 0.5 }).addTo(map)
 
   const dotRenderer = L.canvas({ padding: 0.2 })
-  const dots = L.layerGroup().addTo(map)
+  const dots = L.featureGroup().addTo(map)
+  const dotIndex = new Map()
+  const popup = L.popup()
+  dots.on('click', (e) => {
+    const { opts, lat, lon } = e.layer.poi
+    popup.setLatLng([lat, lon]).setContent(popupFor(opts, lat, lon)).openOn(map)
+  })
 
   const data = new TileData('data')
   let renderToken = 0
+  let renderTimer = null
 
   window.showInfo = () => { document.getElementById('modal').classList.add('shown') }
   window.hideModal = () => { document.getElementById('modal').classList.remove('shown') }
@@ -96,7 +88,11 @@ requirejs([
 
     map.on('moveend', () => {
       savePosition()
-      render()
+      scheduleRender()
+    })
+    map.on('movestart zoomstart', () => {
+      renderToken++
+      clearTimeout(renderTimer)
     })
 
     restoreView()
@@ -112,9 +108,14 @@ requirejs([
     }
   }
 
-  async function render() {
-    if (!data.meta) return
+  function scheduleRender() {
+    clearTimeout(renderTimer)
     const token = ++renderToken
+    renderTimer = setTimeout(() => render(token), RENDER_DELAY)
+  }
+
+  async function render(token = ++renderToken) {
+    if (!data.meta) return
     const zoom = map.getZoom()
 
     if (zoom < MIN_ZOOM) {
@@ -139,54 +140,67 @@ requirejs([
     }
     loading(false)
 
+    await nextFrame()
+    if (token !== renderToken) return
+
     const types = Object.keys(interests)
     const points = data.pointsIn(view.pad(0.1), types)
 
-    types.forEach((type) => drawHeat(type, points[type], zoom))
+    heat.draw(types.map((type) => heatChannel(type, points[type], zoom)))
     drawDots(points, zoom)
     setHitCount(countIn(points.c, view))
   }
 
-  function drawHeat(type, coords, zoom) {
+  function nextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(resolve))
+  }
+
+  function heatChannel(type, coords, zoom) {
     const opts = interests[type]
-    const layer = layers[type]
-    const radius = Math.round(Math.min(opts.maxRadius, Math.max(opts.minRadius, opts.radius * 2 ** zoom)))
-    const max = opts.max * Math.max(1, 2 ** ((14 - zoom) * 0.45))
-    const maxOpacity = type === 'c' ? opts.maxOpacity : opts.maxOpacity * Math.min(1, Math.max(0.45, (zoom - 9) / 5))
-    if (layer.cfg.maxOpacity !== maxOpacity) {
-      layer.cfg.maxOpacity = maxOpacity
-      layer._heatmap.configure({ maxOpacity })
+    return {
+      coords,
+      radius: Math.round(Math.min(opts.maxRadius, Math.max(opts.minRadius, opts.radius * 2 ** zoom))),
+      max: opts.max * Math.max(1, 2 ** ((14 - zoom) * 0.45)),
+      maxOpacity: type === 'c' ? opts.maxOpacity : opts.maxOpacity * Math.min(1, Math.max(0.45, (zoom - 9) / 5)),
+      gradient: opts.gradient,
+      blur: opts.blur
     }
-    layer.cfg.radius = radius
-    const list = new Array(coords.length / 2)
-    for (let i = 0; i < coords.length; i += 2) {
-      list[i / 2] = { lat: coords[i], lon: coords[i + 1], count: 1 }
-    }
-    layer.setData({ data: list, max })
   }
 
   function drawDots(points, zoom) {
-    dots.clearLayers()
-    if (zoom < DOT_ZOOM) return
-    let total = 0
+    if (zoom < DOT_ZOOM) {
+      dots.clearLayers()
+      dotIndex.clear()
+      return
+    }
+    const wanted = new Set()
     Object.keys(points).forEach((type) => {
       const coords = points[type]
-      const opts = interests[type]
-      for (let i = 0; i < coords.length && total < MAX_DOTS; i += 2, total++) {
-        const lat = coords[i]
-        const lon = coords[i + 1]
-        L.circleMarker([lat, lon], {
-          renderer: dotRenderer,
-          radius: 4,
-          stroke: true,
-          color: '#fff',
-          weight: 1.5,
-          fillColor: opts.dot,
-          fillOpacity: 0.95
-        })
-          .bindPopup(popupFor(opts, lat, lon))
-          .addTo(dots)
+      for (let i = 0; i < coords.length && wanted.size < MAX_DOTS; i += 2) {
+        wanted.add(`${type}:${coords[i]}:${coords[i + 1]}`)
       }
+    })
+    dotIndex.forEach((marker, key) => {
+      if (wanted.has(key)) return
+      dots.removeLayer(marker)
+      dotIndex.delete(key)
+    })
+    wanted.forEach((key) => {
+      if (dotIndex.has(key)) return
+      const [type, lat, lon] = key.split(':')
+      const opts = interests[type]
+      const marker = L.circleMarker([+lat, +lon], {
+        renderer: dotRenderer,
+        radius: 4,
+        stroke: true,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: opts.dot,
+        fillOpacity: 0.95
+      })
+      marker.poi = { opts, lat: +lat, lon: +lon }
+      dotIndex.set(key, marker)
+      dots.addLayer(marker)
     })
   }
 
@@ -197,14 +211,19 @@ requirejs([
   }
 
   function clearLayers() {
-    Object.keys(layers).forEach((type) => layers[type].setData({ data: [], max: 1 }))
+    heat.clear()
     dots.clearLayers()
+    dotIndex.clear()
   }
 
   function countIn(coords, bounds) {
     let count = 0
+    const south = bounds.getSouth()
+    const north = bounds.getNorth()
+    const west = bounds.getWest()
+    const east = bounds.getEast()
     for (let i = 0; i < coords.length; i += 2) {
-      if (bounds.contains([coords[i], coords[i + 1]])) count++
+      if (coords[i] >= south && coords[i] <= north && coords[i + 1] >= west && coords[i + 1] <= east) count++
     }
     return count
   }

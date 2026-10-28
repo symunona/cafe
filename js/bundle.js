@@ -16209,981 +16209,235 @@ define("../node_modules/requirejs/require", function(){});
 })));
 //# sourceMappingURL=leaflet-src.js.map
 ;
-/*
- * heatmap.js v2.0.5 | JavaScript Heatmap Library
- *
- * Copyright 2008-2016 Patrick Wied <heatmapjs@patrick-wied.at> - All rights reserved.
- * Dual licensed under MIT and Beerware license 
- *
- * :: 2016-09-05 01:16
- */
-;(function (name, context, factory) {
+define('heat-layer',['leaflet'], (L) => {
 
-  // Supports UMD. AMD, CommonJS/Node.js and browser context
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = factory();
-  } else if (typeof define === "function" && define.amd) {
-    define('heatmap',factory);
-  } else {
-    context[name] = factory();
+  const CELL = 4
+  const TILE = 256
+  const PAD = 64
+
+  function palette(gradient) {
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 1
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const fill = ctx.createLinearGradient(0, 0, 256, 1)
+    Object.keys(gradient).forEach((stop) => fill.addColorStop(+stop, gradient[stop]))
+    ctx.fillStyle = fill
+    ctx.fillRect(0, 0, 256, 1)
+    return ctx.getImageData(0, 0, 256, 1).data
   }
 
-})("h337", this, function () {
+  function stamp(radius, blur) {
+    const canvas = document.createElement('canvas')
+    canvas.width = canvas.height = radius * 2
+    const ctx = canvas.getContext('2d')
+    const fill = ctx.createRadialGradient(radius, radius, radius * (1 - blur), radius, radius, radius)
+    fill.addColorStop(0, 'rgba(0,0,0,1)')
+    fill.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = fill
+    ctx.fillRect(0, 0, radius * 2, radius * 2)
+    return canvas
+  }
 
-// Heatmap Config stores default values and will be merged with instance config
-var HeatmapConfig = {
-  defaultRadius: 40,
-  defaultRenderer: 'canvas2d',
-  defaultGradient: { 0.25: "rgb(0,0,255)", 0.55: "rgb(0,255,0)", 0.85: "yellow", 1.0: "rgb(255,0,0)"},
-  defaultMaxOpacity: 1,
-  defaultMinOpacity: 0,
-  defaultBlur: .85,
-  defaultXField: 'x',
-  defaultYField: 'y',
-  defaultValueField: 'value', 
-  plugins: {}
-};
-var Store = (function StoreClosure() {
-
-  var Store = function Store(config) {
-    this._coordinator = {};
-    this._data = [];
-    this._radi = [];
-    this._min = 10;
-    this._max = 1;
-    this._xField = config['xField'] || config.defaultXField;
-    this._yField = config['yField'] || config.defaultYField;
-    this._valueField = config['valueField'] || config.defaultValueField;
-
-    if (config["radius"]) {
-      this._cfgRadius = config["radius"];
-    }
-  };
-
-  var defaultRadius = HeatmapConfig.defaultRadius;
-
-  Store.prototype = {
-    // when forceRender = false -> called from setData, omits renderall event
-    _organiseData: function(dataPoint, forceRender) {
-        var x = dataPoint[this._xField];
-        var y = dataPoint[this._yField];
-        var radi = this._radi;
-        var store = this._data;
-        var max = this._max;
-        var min = this._min;
-        var value = dataPoint[this._valueField] || 1;
-        var radius = dataPoint.radius || this._cfgRadius || defaultRadius;
-
-        if (!store[x]) {
-          store[x] = [];
-          radi[x] = [];
-        }
-
-        if (!store[x][y]) {
-          store[x][y] = value;
-          radi[x][y] = radius;
-        } else {
-          store[x][y] += value;
-        }
-        var storedVal = store[x][y];
-
-        if (storedVal > max) {
-          if (!forceRender) {
-            this._max = storedVal;
-          } else {
-            this.setDataMax(storedVal);
-          }
-          return false;
-        } else if (storedVal < min) {
-          if (!forceRender) {
-            this._min = storedVal;
-          } else {
-            this.setDataMin(storedVal);
-          }
-          return false;
-        } else {
-          return { 
-            x: x, 
-            y: y,
-            value: value, 
-            radius: radius,
-            min: min,
-            max: max 
-          };
-        }
+  const HeatLayer = L.Layer.extend({
+    options: {
+      resolution: 1
     },
-    _unOrganizeData: function() {
-      var unorganizedData = [];
-      var data = this._data;
-      var radi = this._radi;
 
-      for (var x in data) {
-        for (var y in data[x]) {
+    initialize(options) {
+      L.setOptions(this, options)
+      this._palettes = new Map()
+      this._stamps = new Map()
+      this._counts = null
+      this._touched = null
+    },
 
-          unorganizedData.push({
-            x: x,
-            y: y,
-            radius: radi[x][y],
-            value: data[x][y]
-          });
+    onAdd(map) {
+      this._canvas = L.DomUtil.create('canvas', 'heat-canvas leaflet-zoom-animated')
+      this._canvas.style.pointerEvents = 'none'
+      this._ctx = this._canvas.getContext('2d', { willReadFrequently: true })
+      this._shadow = document.createElement('canvas')
+      this._shadowCtx = this._shadow.getContext('2d', { willReadFrequently: true })
+      map.getPanes().overlayPane.appendChild(this._canvas)
+      this._drawn = null
+    },
 
-        }
-      }
+    onRemove() {
+      L.DomUtil.remove(this._canvas)
+    },
+
+    getEvents() {
       return {
-        min: this._min,
-        max: this._max,
-        data: unorganizedData
-      };
+        zoomanim: this._animateZoom,
+        viewreset: this._place
+      }
     },
-    _onExtremaChange: function() {
-      this._coordinator.emit('extremachange', {
-        min: this._min,
-        max: this._max
-      });
+
+    _animateZoom(e) {
+      if (!this._drawn) return
+      const scale = this._map.getZoomScale(e.zoom, this._drawn.zoom)
+      const offset = this._map._latLngBoundsToNewLayerBounds(this._drawn.bounds, e.zoom, e.center).min
+      L.DomUtil.setTransform(this._canvas, offset, scale)
     },
-    addData: function() {
-      if (arguments[0].length > 0) {
-        var dataArr = arguments[0];
-        var dataLen = dataArr.length;
-        while (dataLen--) {
-          this.addData.call(this, dataArr[dataLen]);
-        }
-      } else {
-        // add to store  
-        var organisedEntry = this._organiseData(arguments[0], true);
-        if (organisedEntry) {
-          // if it's the first datapoint initialize the extremas with it
-          if (this._data.length === 0) {
-            this._min = this._max = organisedEntry.value;
+
+    _place() {
+      if (!this._drawn) return
+      const map = this._map
+      const scale = map.getZoomScale(map.getZoom(), this._drawn.zoom)
+      L.DomUtil.setTransform(this._canvas, map.latLngToLayerPoint(this._drawn.bounds.getNorthWest()), scale)
+    },
+
+    clear() {
+      this._drawn = null
+      this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height)
+    },
+
+    draw(channels) {
+      const map = this._map
+      const size = map.getSize()
+      this._resize(size.x, size.y)
+      const width = this._canvas.width
+      const height = this._canvas.height
+
+      const zoom = map.getZoom()
+      const topLeft = map.containerPointToLayerPoint([0, 0])
+      const origin = map.getPixelOrigin().add(topLeft)
+      const output = this._ctx.createImageData(width, height)
+
+      channels.forEach((channel) => this._drawChannel(channel, zoom, origin, width, height, output.data))
+
+      this._ctx.putImageData(output, 0, 0)
+      L.DomUtil.setPosition(this._canvas, topLeft)
+      this._drawn = { zoom, bounds: map.getBounds() }
+      performance.mark('heat-drawn')
+    },
+
+    _resize(width, height) {
+      if (this._cssWidth === width && this._cssHeight === height) return
+      const res = this.options.resolution
+      this._cssWidth = width
+      this._cssHeight = height
+      this._canvas.width = this._shadow.width = Math.ceil(width * res)
+      this._canvas.height = this._shadow.height = Math.ceil(height * res)
+      this._canvas.style.width = this._canvas.width / res + 'px'
+      this._canvas.style.height = this._canvas.height / res + 'px'
+      this._cols = Math.ceil((width + 2 * PAD) / CELL)
+      this._rows = Math.ceil((height + 2 * PAD) / CELL)
+      this._counts = new Float32Array(this._cols * this._rows)
+      this._touched = new Int32Array(this._cols * this._rows)
+    },
+
+    _aggregate(coords, zoom, origin) {
+      const counts = this._counts
+      const touched = this._touched
+      const cols = this._cols
+      const rows = this._rows
+      const scale = TILE * 2 ** zoom
+      const d = Math.PI / 180
+      const left = origin.x - PAD
+      const top = origin.y - PAD
+      let n = 0
+      for (let i = 0; i < coords.length; i += 2) {
+        const sin = Math.sin(coords[i] * d)
+        const x = scale * (coords[i + 1] / 360 + 0.5) - left
+        const y = scale * (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) - top
+        const cx = Math.floor(x / CELL)
+        const cy = Math.floor(y / CELL)
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) continue
+        const idx = cy * cols + cx
+        if (counts[idx] === 0) touched[n++] = idx
+        counts[idx]++
+      }
+      return n
+    },
+
+    _drawChannel(channel, zoom, origin, width, height, out) {
+      const { coords, radius, max, maxOpacity, gradient, blur } = channel
+      const ctx = this._shadowCtx
+      ctx.clearRect(0, 0, width, height)
+      if (!coords.length) return
+
+      const n = this._aggregate(coords, zoom, origin)
+      const res = this.options.resolution
+      const r = Math.max(2, Math.round(radius * res))
+      const tpl = this._stamp(r, blur)
+      const counts = this._counts
+      const touched = this._touched
+      const cols = this._cols
+      const keep = 1 - 1 / Math.max(1, max)
+      const step = CELL * res
+      const offset = (CELL / 2 - PAD) * res - r
+      let minX = width
+      let minY = height
+      let maxX = 0
+      let maxY = 0
+
+      for (let i = 0; i < n; i++) {
+        const idx = touched[i]
+        const cx = idx % cols
+        const x = cx * step + offset
+        const y = (idx - cx) / cols * step + offset
+        const alpha = 1 - keep ** counts[idx]
+        counts[idx] = 0
+        ctx.globalAlpha = alpha < 0.01 ? 0.01 : alpha
+        ctx.drawImage(tpl, x, y)
+        if (x < minX) minX = x
+        if (y < minY) minY = y
+        if (x > maxX) maxX = x
+        if (y > maxY) maxY = y
+      }
+
+      const x0 = Math.max(0, Math.floor(minX))
+      const y0 = Math.max(0, Math.floor(minY))
+      const x1 = Math.min(width, Math.ceil(maxX) + r * 2)
+      const y1 = Math.min(height, Math.ceil(maxY) + r * 2)
+      if (x1 <= x0 || y1 <= y0) return
+      this._composite(ctx.getImageData(x0, y0, x1 - x0, y1 - y0).data, x0, y0, x1 - x0, y1 - y0, width, out,
+        this._palette(gradient), Math.round(maxOpacity * 255))
+    },
+
+    _composite(shadow, x0, y0, w, h, width, out, colors, cap) {
+      for (let row = 0; row < h; row++) {
+        let s = row * w * 4 + 3
+        let o = ((y0 + row) * width + x0) * 4
+        for (let col = 0; col < w; col++, s += 4, o += 4) {
+          const a = shadow[s]
+          if (a === 0) continue
+          const p = a * 4
+          const sa = a < cap ? a : cap
+          const da = out[o + 3]
+          if (da === 0) {
+            out[o] = colors[p]
+            out[o + 1] = colors[p + 1]
+            out[o + 2] = colors[p + 2]
+            out[o + 3] = sa
+            continue
           }
-          this._coordinator.emit('renderpartial', {
-            min: this._min,
-            max: this._max,
-            data: [organisedEntry]
-          });
+          const keep = da * (255 - sa) / 255
+          const total = sa + keep
+          out[o] = (colors[p] * sa + out[o] * keep) / total
+          out[o + 1] = (colors[p + 1] * sa + out[o + 1] * keep) / total
+          out[o + 2] = (colors[p + 2] * sa + out[o + 2] * keep) / total
+          out[o + 3] = total
         }
       }
-      return this;
     },
-    setData: function(data) {
-      var dataPoints = data.data;
-      var pointsLen = dataPoints.length;
 
-
-      // reset data arrays
-      this._data = [];
-      this._radi = [];
-
-      for(var i = 0; i < pointsLen; i++) {
-        this._organiseData(dataPoints[i], false);
-      }
-      this._max = data.max;
-      this._min = data.min || 0;
-      
-      this._onExtremaChange();
-      this._coordinator.emit('renderall', this._getInternalData());
-      return this;
+    _palette(gradient) {
+      if (!this._palettes.has(gradient)) this._palettes.set(gradient, palette(gradient))
+      return this._palettes.get(gradient)
     },
-    removeData: function() {
-      // TODO: implement
-    },
-    setDataMax: function(max) {
-      this._max = max;
-      this._onExtremaChange();
-      this._coordinator.emit('renderall', this._getInternalData());
-      return this;
-    },
-    setDataMin: function(min) {
-      this._min = min;
-      this._onExtremaChange();
-      this._coordinator.emit('renderall', this._getInternalData());
-      return this;
-    },
-    setCoordinator: function(coordinator) {
-      this._coordinator = coordinator;
-    },
-    _getInternalData: function() {
-      return { 
-        max: this._max,
-        min: this._min, 
-        data: this._data,
-        radi: this._radi 
-      };
-    },
-    getData: function() {
-      return this._unOrganizeData();
-    }/*,
 
-      TODO: rethink.
-
-    getValueAt: function(point) {
-      var value;
-      var radius = 100;
-      var x = point.x;
-      var y = point.y;
-      var data = this._data;
-
-      if (data[x] && data[x][y]) {
-        return data[x][y];
-      } else {
-        var values = [];
-        // radial search for datapoints based on default radius
-        for(var distance = 1; distance < radius; distance++) {
-          var neighbors = distance * 2 +1;
-          var startX = x - distance;
-          var startY = y - distance;
-
-          for(var i = 0; i < neighbors; i++) {
-            for (var o = 0; o < neighbors; o++) {
-              if ((i == 0 || i == neighbors-1) || (o == 0 || o == neighbors-1)) {
-                if (data[startY+i] && data[startY+i][startX+o]) {
-                  values.push(data[startY+i][startX+o]);
-                }
-              } else {
-                continue;
-              } 
-            }
-          }
-        }
-        if (values.length > 0) {
-          return Math.max.apply(Math, values);
-        }
-      }
-      return false;
-    }*/
-  };
-
-
-  return Store;
-})();
-
-var Canvas2dRenderer = (function Canvas2dRendererClosure() {
-
-  var _getColorPalette = function(config) {
-    var gradientConfig = config.gradient || config.defaultGradient;
-    var paletteCanvas = document.createElement('canvas');
-    var paletteCtx = paletteCanvas.getContext('2d');
-
-    paletteCanvas.width = 256;
-    paletteCanvas.height = 1;
-
-    var gradient = paletteCtx.createLinearGradient(0, 0, 256, 1);
-    for (var key in gradientConfig) {
-      gradient.addColorStop(key, gradientConfig[key]);
+    _stamp(radius, blur) {
+      const key = radius + ':' + blur
+      if (!this._stamps.has(key)) this._stamps.set(key, stamp(radius, blur))
+      return this._stamps.get(key)
     }
-
-    paletteCtx.fillStyle = gradient;
-    paletteCtx.fillRect(0, 0, 256, 1);
-
-    return paletteCtx.getImageData(0, 0, 256, 1).data;
-  };
-
-  var _getPointTemplate = function(radius, blurFactor) {
-    var tplCanvas = document.createElement('canvas');
-    var tplCtx = tplCanvas.getContext('2d');
-    var x = radius;
-    var y = radius;
-    tplCanvas.width = tplCanvas.height = radius*2;
-
-    if (blurFactor == 1) {
-      tplCtx.beginPath();
-      tplCtx.arc(x, y, radius, 0, 2 * Math.PI, false);
-      tplCtx.fillStyle = 'rgba(0,0,0,1)';
-      tplCtx.fill();
-    } else {
-      var gradient = tplCtx.createRadialGradient(x, y, radius*blurFactor, x, y, radius);
-      gradient.addColorStop(0, 'rgba(0,0,0,1)');
-      gradient.addColorStop(1, 'rgba(0,0,0,0)');
-      tplCtx.fillStyle = gradient;
-      tplCtx.fillRect(0, 0, 2*radius, 2*radius);
-    }
-
-
-
-    return tplCanvas;
-  };
-
-  var _prepareData = function(data) {
-    var renderData = [];
-    var min = data.min;
-    var max = data.max;
-    var radi = data.radi;
-    var data = data.data;
-
-    var xValues = Object.keys(data);
-    var xValuesLen = xValues.length;
-
-    while(xValuesLen--) {
-      var xValue = xValues[xValuesLen];
-      var yValues = Object.keys(data[xValue]);
-      var yValuesLen = yValues.length;
-      while(yValuesLen--) {
-        var yValue = yValues[yValuesLen];
-        var value = data[xValue][yValue];
-        var radius = radi[xValue][yValue];
-        renderData.push({
-          x: xValue,
-          y: yValue,
-          value: value,
-          radius: radius
-        });
-      }
-    }
-
-    return {
-      min: min,
-      max: max,
-      data: renderData
-    };
-  };
-
-
-  function Canvas2dRenderer(config) {
-    var container = config.container;
-    var shadowCanvas = this.shadowCanvas = document.createElement('canvas');
-    var canvas = this.canvas = config.canvas || document.createElement('canvas');
-    var renderBoundaries = this._renderBoundaries = [10000, 10000, 0, 0];
-
-    var computed = getComputedStyle(config.container) || {};
-
-    canvas.className = 'heatmap-canvas';
-
-    this._width = canvas.width = shadowCanvas.width = config.width || +(computed.width.replace(/px/,''));
-    this._height = canvas.height = shadowCanvas.height = config.height || +(computed.height.replace(/px/,''));
-
-    this.shadowCtx = shadowCanvas.getContext('2d');
-    this.ctx = canvas.getContext('2d');
-
-    // @TODO:
-    // conditional wrapper
-
-    canvas.style.cssText = shadowCanvas.style.cssText = 'position:absolute;left:0;top:0;';
-
-    container.style.position = 'relative';
-    container.appendChild(canvas);
-
-    this._palette = _getColorPalette(config);
-    this._templates = {};
-
-    this._setStyles(config);
-  };
-
-  Canvas2dRenderer.prototype = {
-    renderPartial: function(data) {
-      if (data.data.length > 0) {
-        this._drawAlpha(data);
-        this._colorize();
-      }
-    },
-    renderAll: function(data) {
-      // reset render boundaries
-      this._clear();
-      if (data.data.length > 0) {
-        this._drawAlpha(_prepareData(data));
-        this._colorize();
-      }
-    },
-    _updateGradient: function(config) {
-      this._palette = _getColorPalette(config);
-    },
-    updateConfig: function(config) {
-      if (config['gradient']) {
-        this._updateGradient(config);
-      }
-      this._setStyles(config);
-    },
-    setDimensions: function(width, height) {
-      this._width = width;
-      this._height = height;
-      this.canvas.width = this.shadowCanvas.width = width;
-      this.canvas.height = this.shadowCanvas.height = height;
-    },
-    _clear: function() {
-      this.shadowCtx.clearRect(0, 0, this._width, this._height);
-      this.ctx.clearRect(0, 0, this._width, this._height);
-    },
-    _setStyles: function(config) {
-      this._blur = (config.blur == 0)?0:(config.blur || config.defaultBlur);
-
-      if (config.backgroundColor) {
-        this.canvas.style.backgroundColor = config.backgroundColor;
-      }
-
-      this._width = this.canvas.width = this.shadowCanvas.width = config.width || this._width;
-      this._height = this.canvas.height = this.shadowCanvas.height = config.height || this._height;
-
-
-      this._opacity = (config.opacity || 0) * 255;
-      this._maxOpacity = (config.maxOpacity || config.defaultMaxOpacity) * 255;
-      this._minOpacity = (config.minOpacity || config.defaultMinOpacity) * 255;
-      this._useGradientOpacity = !!config.useGradientOpacity;
-    },
-    _drawAlpha: function(data) {
-      var min = this._min = data.min;
-      var max = this._max = data.max;
-      var data = data.data || [];
-      var dataLen = data.length;
-      // on a point basis?
-      var blur = 1 - this._blur;
-
-      while(dataLen--) {
-
-        var point = data[dataLen];
-
-        var x = point.x;
-        var y = point.y;
-        var radius = point.radius;
-        // if value is bigger than max
-        // use max as value
-        var value = Math.min(point.value, max);
-        var rectX = x - radius;
-        var rectY = y - radius;
-        var shadowCtx = this.shadowCtx;
-
-
-
-
-        var tpl;
-        if (!this._templates[radius]) {
-          this._templates[radius] = tpl = _getPointTemplate(radius, blur);
-        } else {
-          tpl = this._templates[radius];
-        }
-        // value from minimum / value range
-        // => [0, 1]
-        var templateAlpha = (value-min)/(max-min);
-        // this fixes #176: small values are not visible because globalAlpha < .01 cannot be read from imageData
-        shadowCtx.globalAlpha = templateAlpha < .01 ? .01 : templateAlpha;
-
-        shadowCtx.drawImage(tpl, rectX, rectY);
-
-        // update renderBoundaries
-        if (rectX < this._renderBoundaries[0]) {
-            this._renderBoundaries[0] = rectX;
-          }
-          if (rectY < this._renderBoundaries[1]) {
-            this._renderBoundaries[1] = rectY;
-          }
-          if (rectX + 2*radius > this._renderBoundaries[2]) {
-            this._renderBoundaries[2] = rectX + 2*radius;
-          }
-          if (rectY + 2*radius > this._renderBoundaries[3]) {
-            this._renderBoundaries[3] = rectY + 2*radius;
-          }
-
-      }
-    },
-    _colorize: function() {
-      var x = this._renderBoundaries[0];
-      var y = this._renderBoundaries[1];
-      var width = this._renderBoundaries[2] - x;
-      var height = this._renderBoundaries[3] - y;
-      var maxWidth = this._width;
-      var maxHeight = this._height;
-      var opacity = this._opacity;
-      var maxOpacity = this._maxOpacity;
-      var minOpacity = this._minOpacity;
-      var useGradientOpacity = this._useGradientOpacity;
-
-      if (x < 0) {
-        x = 0;
-      }
-      if (y < 0) {
-        y = 0;
-      }
-      if (x + width > maxWidth) {
-        width = maxWidth - x;
-      }
-      if (y + height > maxHeight) {
-        height = maxHeight - y;
-      }
-
-      var img = this.shadowCtx.getImageData(x, y, width, height);
-      var imgData = img.data;
-      var len = imgData.length;
-      var palette = this._palette;
-
-
-      for (var i = 3; i < len; i+= 4) {
-        var alpha = imgData[i];
-        var offset = alpha * 4;
-
-
-        if (!offset) {
-          continue;
-        }
-
-        var finalAlpha;
-        if (opacity > 0) {
-          finalAlpha = opacity;
-        } else {
-          if (alpha < maxOpacity) {
-            if (alpha < minOpacity) {
-              finalAlpha = minOpacity;
-            } else {
-              finalAlpha = alpha;
-            }
-          } else {
-            finalAlpha = maxOpacity;
-          }
-        }
-
-        imgData[i-3] = palette[offset];
-        imgData[i-2] = palette[offset + 1];
-        imgData[i-1] = palette[offset + 2];
-        imgData[i] = useGradientOpacity ? palette[offset + 3] : finalAlpha;
-
-      }
-
-      img.data = imgData;
-      this.ctx.putImageData(img, x, y);
-
-      this._renderBoundaries = [1000, 1000, 0, 0];
-
-    },
-    getValueAt: function(point) {
-      var value;
-      var shadowCtx = this.shadowCtx;
-      var img = shadowCtx.getImageData(point.x, point.y, 1, 1);
-      var data = img.data[3];
-      var max = this._max;
-      var min = this._min;
-
-      value = (Math.abs(max-min) * (data/255)) >> 0;
-
-      return value;
-    },
-    getDataURL: function() {
-      return this.canvas.toDataURL();
-    }
-  };
-
-
-  return Canvas2dRenderer;
-})();
-
-
-var Renderer = (function RendererClosure() {
-
-  var rendererFn = false;
-
-  if (HeatmapConfig['defaultRenderer'] === 'canvas2d') {
-    rendererFn = Canvas2dRenderer;
-  }
-
-  return rendererFn;
-})();
-
-
-var Util = {
-  merge: function() {
-    var merged = {};
-    var argsLen = arguments.length;
-    for (var i = 0; i < argsLen; i++) {
-      var obj = arguments[i]
-      for (var key in obj) {
-        merged[key] = obj[key];
-      }
-    }
-    return merged;
-  }
-};
-// Heatmap Constructor
-var Heatmap = (function HeatmapClosure() {
-
-  var Coordinator = (function CoordinatorClosure() {
-
-    function Coordinator() {
-      this.cStore = {};
-    };
-
-    Coordinator.prototype = {
-      on: function(evtName, callback, scope) {
-        var cStore = this.cStore;
-
-        if (!cStore[evtName]) {
-          cStore[evtName] = [];
-        }
-        cStore[evtName].push((function(data) {
-            return callback.call(scope, data);
-        }));
-      },
-      emit: function(evtName, data) {
-        var cStore = this.cStore;
-        if (cStore[evtName]) {
-          var len = cStore[evtName].length;
-          for (var i=0; i<len; i++) {
-            var callback = cStore[evtName][i];
-            callback(data);
-          }
-        }
-      }
-    };
-
-    return Coordinator;
-  })();
-
-
-  var _connect = function(scope) {
-    var renderer = scope._renderer;
-    var coordinator = scope._coordinator;
-    var store = scope._store;
-
-    coordinator.on('renderpartial', renderer.renderPartial, renderer);
-    coordinator.on('renderall', renderer.renderAll, renderer);
-    coordinator.on('extremachange', function(data) {
-      scope._config.onExtremaChange &&
-      scope._config.onExtremaChange({
-        min: data.min,
-        max: data.max,
-        gradient: scope._config['gradient'] || scope._config['defaultGradient']
-      });
-    });
-    store.setCoordinator(coordinator);
-  };
-
-
-  function Heatmap() {
-    var config = this._config = Util.merge(HeatmapConfig, arguments[0] || {});
-    this._coordinator = new Coordinator();
-    if (config['plugin']) {
-      var pluginToLoad = config['plugin'];
-      if (!HeatmapConfig.plugins[pluginToLoad]) {
-        throw new Error('Plugin \''+ pluginToLoad + '\' not found. Maybe it was not registered.');
-      } else {
-        var plugin = HeatmapConfig.plugins[pluginToLoad];
-        // set plugin renderer and store
-        this._renderer = new plugin.renderer(config);
-        this._store = new plugin.store(config);
-      }
-    } else {
-      this._renderer = new Renderer(config);
-      this._store = new Store(config);
-    }
-    _connect(this);
-  };
-
-  // @TODO:
-  // add API documentation
-  Heatmap.prototype = {
-    addData: function() {
-      this._store.addData.apply(this._store, arguments);
-      return this;
-    },
-    removeData: function() {
-      this._store.removeData && this._store.removeData.apply(this._store, arguments);
-      return this;
-    },
-    setData: function() {
-      this._store.setData.apply(this._store, arguments);
-      return this;
-    },
-    setDataMax: function() {
-      this._store.setDataMax.apply(this._store, arguments);
-      return this;
-    },
-    setDataMin: function() {
-      this._store.setDataMin.apply(this._store, arguments);
-      return this;
-    },
-    configure: function(config) {
-      this._config = Util.merge(this._config, config);
-      this._renderer.updateConfig(this._config);
-      this._coordinator.emit('renderall', this._store._getInternalData());
-      return this;
-    },
-    repaint: function() {
-      this._coordinator.emit('renderall', this._store._getInternalData());
-      return this;
-    },
-    getData: function() {
-      return this._store.getData();
-    },
-    getDataURL: function() {
-      return this._renderer.getDataURL();
-    },
-    getValueAt: function(point) {
-
-      if (this._store.getValueAt) {
-        return this._store.getValueAt(point);
-      } else  if (this._renderer.getValueAt) {
-        return this._renderer.getValueAt(point);
-      } else {
-        return null;
-      }
-    }
-  };
-
-  return Heatmap;
-
-})();
-
-
-// core
-var heatmapFactory = {
-  create: function(config) {
-    return new Heatmap(config);
-  },
-  register: function(pluginKey, plugin) {
-    HeatmapConfig.plugins[pluginKey] = plugin;
-  }
-};
-
-return heatmapFactory;
-
-
-});
-/*
-* Leaflet Heatmap Overlay
-*
-* Copyright (c) 2008-2016, Patrick Wied (https://www.patrick-wied.at)
-* Dual-licensed under the MIT (http://www.opensource.org/licenses/mit-license.php)
-* and the Beerware (http://en.wikipedia.org/wiki/Beerware) license.
-*/
-; (function (name, context, factory) {
-    // Supports UMD. AMD, CommonJS/Node.js and browser context
-    if (typeof module !== "undefined" && module.exports) {
-        module.exports = factory(
-            require('heatmap'),
-            require('leaflet')
-        );
-    } else if (typeof define === "function" && define.amd) {
-        define('leaflet-heatmap-plugin',['heatmap', 'leaflet'], factory);
-    } else {
-        // browser globals
-        if (typeof window.h337 === 'undefined') {
-            throw new Error('heatmap.js must be loaded before the leaflet heatmap plugin');
-        }
-        if (typeof window.L === 'undefined') {
-            throw new Error('Leaflet must be loaded before the leaflet heatmap plugin');
-        }
-        context[name] = factory(window.h337, window.L);
-    }
-
-})("HeatmapOverlay", this, function (h337, L) {
-    'use strict';
-
-    // Leaflet < 0.8 compatibility
-    if (typeof L.Layer === 'undefined') {
-        L.Layer = L.Class;
-    }
-
-    var HeatmapOverlay = L.Layer.extend({
-
-        initialize: function (config) {
-            this.cfg = config;
-            this._el = L.DomUtil.create('div', 'leaflet-zoom-hide');
-            this._data = [];
-            this._max = 1;
-            this._min = 0;
-            this.cfg.container = this._el;
-        },
-
-        onAdd: function (map) {
-            var size = map.getSize();
-
-            this._map = map;
-
-            this._width = size.x;
-            this._height = size.y;
-
-            this._el.style.width = size.x + 'px';
-            this._el.style.height = size.y + 'px';
-            this._el.style.position = 'absolute';
-
-            this._origin = this._map.layerPointToLatLng(new L.Point(0, 0));
-
-            map.getPanes().overlayPane.appendChild(this._el);
-
-            if (!this._heatmap) {
-                this._heatmap = h337.create(this.cfg);
-            }
-
-            // this resets the origin and redraws whenever
-            // the zoom changed or the map has been moved
-            map.on('moveend', this._reset, this);
-            this._draw();
-        },
-
-        addTo: function (map) {
-            map.addLayer(this);
-            return this;
-        },
-
-        onRemove: function (map) {
-            // remove layer's DOM elements and listeners
-            map.getPanes().overlayPane.removeChild(this._el);
-
-            map.off('moveend', this._reset, this);
-        },
-        _draw: function () {
-            if (!this._map) { return; }
-
-            var mapPane = this._map.getPanes().mapPane;
-            var point = mapPane._leaflet_pos;
-
-            // reposition the layer
-            this._el.style[HeatmapOverlay.CSS_TRANSFORM] = 'translate(' +
-                -Math.round(point.x) + 'px,' +
-                -Math.round(point.y) + 'px)';
-
-            this._update();
-        },
-        _update: function () {
-            var bounds, zoom, scale;
-            var generatedData = { max: this._max, min: this._min, data: [] };
-
-            bounds = this._map.getBounds();
-            zoom = this._map.getZoom();
-            scale = Math.pow(2, zoom);
-
-            if (this._data.length == 0) {
-                if (this._heatmap) {
-                    this._heatmap.setData(generatedData);
-                }
-                return;
-            }
-
-
-            var latLngPoints = [];
-            var radiusMultiplier = this.cfg.scaleRadius ? scale : 1;
-            var localMax = 0;
-            var localMin = 0;
-            var valueField = this.cfg.valueField;
-            var len = this._data.length;
-
-            while (len--) {
-                var entry = this._data[len];
-                var value = entry[valueField];
-                var latlng = entry.latlng;
-
-
-                // we don't wanna render points that are not even on the map ;-)
-                if (!bounds.contains(latlng)) {
-                    continue;
-                }
-                // local max is the maximum within current bounds
-                localMax = Math.max(value, localMax);
-                localMin = Math.min(value, localMin);
-
-                var point = this._map.latLngToContainerPoint(latlng);
-                var latlngPoint = { x: Math.round(point.x), y: Math.round(point.y) };
-                latlngPoint[valueField] = value;
-
-                var radius;
-
-                if (entry.radius) {
-                    radius = entry.radius * radiusMultiplier;
-                } else {
-                    radius = (this.cfg.radius || 2) * radiusMultiplier;
-                }
-                latlngPoint.radius = radius;
-                latLngPoints.push(latlngPoint);
-            }
-            if (this.cfg.useLocalExtrema) {
-                generatedData.max = localMax;
-                generatedData.min = localMin;
-            }
-            // console.log('from this', this._data)
-            // console.log('found points within', latLngPoints)
-            generatedData.data = latLngPoints;
-            try{
-                this._heatmap.setData(generatedData);
-            } catch(e){
-                // Sometimes this throws an error, if you are zoomed out too far.
-                // It could handle that more gracefully.
-            }
-        },
-        setData: function (data) {
-            this._max = data.max || this._max;
-            this._min = data.min || this._min;
-            var latField = this.cfg.latField || 'lat';
-            var lngField = this.cfg.lngField || 'lng';
-            var valueField = this.cfg.valueField || 'value';
-
-            // transform data to latlngs
-            var data = data.data;
-            var len = data.length;
-            var d = [];
-
-            while (len--) {
-                var entry = data[len];
-                var latlng = new L.LatLng(entry[latField], entry[lngField]);
-                var dataObj = { latlng: latlng };
-                dataObj[valueField] = entry[valueField];
-                if (entry.radius) {
-                    dataObj.radius = entry.radius;
-                }
-                d.push(dataObj);
-            }
-            this._data = d;
-
-            this._draw();
-        },
-        // experimential... not ready.
-        addData: function (pointOrArray) {
-            if (pointOrArray.length > 0) {
-                var len = pointOrArray.length;
-                while (len--) {
-                    this.addData(pointOrArray[len]);
-                }
-            } else {
-                var latField = this.cfg.latField || 'lat';
-                var lngField = this.cfg.lngField || 'lng';
-                var valueField = this.cfg.valueField || 'value';
-                var entry = pointOrArray;
-                var latlng = new L.LatLng(entry[latField], entry[lngField]);
-                var dataObj = { latlng: latlng };
-
-                dataObj[valueField] = entry[valueField];
-                this._max = Math.max(this._max, dataObj[valueField]);
-                this._min = Math.min(this._min, dataObj[valueField]);
-
-                if (entry.radius) {
-                    dataObj.radius = entry.radius;
-                }
-                this._data.push(dataObj);
-                this._draw();
-            }
-        },
-        _reset: function () {
-            this._origin = this._map.layerPointToLatLng(new L.Point(0, 0));
-
-            var size = this._map.getSize();
-            if (this._width !== size.x || this._height !== size.y) {
-                this._width = size.x;
-                this._height = size.y;
-
-                this._el.style.width = this._width + 'px';
-                this._el.style.height = this._height + 'px';
-
-                this._heatmap._renderer.setDimensions(this._width, this._height);
-            }
-            this._draw();
-        }
-    });
-
-    HeatmapOverlay.CSS_TRANSFORM = (function () {
-        var div = document.createElement('div');
-        var props = [
-            'transform',
-            'WebkitTransform',
-            'MozTransform',
-            'OTransform',
-            'msTransform'
-        ];
-
-        for (var i = 0; i < props.length; i++) {
-            var prop = props[i];
-            if (div.style[prop] !== undefined) {
-                return prop;
-            }
-        }
-        return props[0];
-    })();
-
-    return HeatmapOverlay;
-});
+  })
+
+  return HeatLayer
+})
+;
 /* 
  * Leaflet Control Search v2.9.7 - 2019-01-14 
  * 
@@ -18365,16 +17619,17 @@ requirejs.config(window.requireConfig)
 
 requirejs([
   'leaflet',
-  'leaflet-heatmap-plugin',
+  'heat-layer',
   'leaflet-search',
   'min-zoom-indicator',
   'tile-data'
-], (L, HeatmapOverlay, LeafletSearch, MinZoomIndicator, TileData) => {
+], (L, HeatLayer, LeafletSearch, MinZoomIndicator, TileData) => {
 
   const POSITION_LS_KEY = 'pos'
   const MIN_ZOOM = 10
   const DOT_ZOOM = 16
   const MAX_DOTS = 3000
+  const RENDER_DELAY = 120
   const DEFAULT_VIEW = { lat: 47.4975, lng: 19.0532, zoom: 14 }
 
   const ATTRIBUTION = [
@@ -18413,29 +17668,20 @@ requirejs([
     attribution: ATTRIBUTION
   }).addTo(map)
 
-  const layers = {}
-  Object.keys(interests).forEach((type) => {
-    const opts = interests[type]
-    layers[type] = new HeatmapOverlay({
-      radius: opts.minRadius,
-      scaleRadius: false,
-      useLocalExtrema: false,
-      latField: 'lat',
-      lngField: 'lon',
-      valueField: 'count',
-      minOpacity: 0,
-      maxOpacity: opts.maxOpacity,
-      blur: opts.blur,
-      gradient: opts.gradient
-    })
-    map.addLayer(layers[type])
-  })
+  const heat = new HeatLayer({ resolution: 0.5 }).addTo(map)
 
   const dotRenderer = L.canvas({ padding: 0.2 })
-  const dots = L.layerGroup().addTo(map)
+  const dots = L.featureGroup().addTo(map)
+  const dotIndex = new Map()
+  const popup = L.popup()
+  dots.on('click', (e) => {
+    const { opts, lat, lon } = e.layer.poi
+    popup.setLatLng([lat, lon]).setContent(popupFor(opts, lat, lon)).openOn(map)
+  })
 
   const data = new TileData('data')
   let renderToken = 0
+  let renderTimer = null
 
   window.showInfo = () => { document.getElementById('modal').classList.add('shown') }
   window.hideModal = () => { document.getElementById('modal').classList.remove('shown') }
@@ -18459,7 +17705,11 @@ requirejs([
 
     map.on('moveend', () => {
       savePosition()
-      render()
+      scheduleRender()
+    })
+    map.on('movestart zoomstart', () => {
+      renderToken++
+      clearTimeout(renderTimer)
     })
 
     restoreView()
@@ -18475,9 +17725,14 @@ requirejs([
     }
   }
 
-  async function render() {
-    if (!data.meta) return
+  function scheduleRender() {
+    clearTimeout(renderTimer)
     const token = ++renderToken
+    renderTimer = setTimeout(() => render(token), RENDER_DELAY)
+  }
+
+  async function render(token = ++renderToken) {
+    if (!data.meta) return
     const zoom = map.getZoom()
 
     if (zoom < MIN_ZOOM) {
@@ -18502,54 +17757,67 @@ requirejs([
     }
     loading(false)
 
+    await nextFrame()
+    if (token !== renderToken) return
+
     const types = Object.keys(interests)
     const points = data.pointsIn(view.pad(0.1), types)
 
-    types.forEach((type) => drawHeat(type, points[type], zoom))
+    heat.draw(types.map((type) => heatChannel(type, points[type], zoom)))
     drawDots(points, zoom)
     setHitCount(countIn(points.c, view))
   }
 
-  function drawHeat(type, coords, zoom) {
+  function nextFrame() {
+    return new Promise((resolve) => requestAnimationFrame(resolve))
+  }
+
+  function heatChannel(type, coords, zoom) {
     const opts = interests[type]
-    const layer = layers[type]
-    const radius = Math.round(Math.min(opts.maxRadius, Math.max(opts.minRadius, opts.radius * 2 ** zoom)))
-    const max = opts.max * Math.max(1, 2 ** ((14 - zoom) * 0.45))
-    const maxOpacity = type === 'c' ? opts.maxOpacity : opts.maxOpacity * Math.min(1, Math.max(0.45, (zoom - 9) / 5))
-    if (layer.cfg.maxOpacity !== maxOpacity) {
-      layer.cfg.maxOpacity = maxOpacity
-      layer._heatmap.configure({ maxOpacity })
+    return {
+      coords,
+      radius: Math.round(Math.min(opts.maxRadius, Math.max(opts.minRadius, opts.radius * 2 ** zoom))),
+      max: opts.max * Math.max(1, 2 ** ((14 - zoom) * 0.45)),
+      maxOpacity: type === 'c' ? opts.maxOpacity : opts.maxOpacity * Math.min(1, Math.max(0.45, (zoom - 9) / 5)),
+      gradient: opts.gradient,
+      blur: opts.blur
     }
-    layer.cfg.radius = radius
-    const list = new Array(coords.length / 2)
-    for (let i = 0; i < coords.length; i += 2) {
-      list[i / 2] = { lat: coords[i], lon: coords[i + 1], count: 1 }
-    }
-    layer.setData({ data: list, max })
   }
 
   function drawDots(points, zoom) {
-    dots.clearLayers()
-    if (zoom < DOT_ZOOM) return
-    let total = 0
+    if (zoom < DOT_ZOOM) {
+      dots.clearLayers()
+      dotIndex.clear()
+      return
+    }
+    const wanted = new Set()
     Object.keys(points).forEach((type) => {
       const coords = points[type]
-      const opts = interests[type]
-      for (let i = 0; i < coords.length && total < MAX_DOTS; i += 2, total++) {
-        const lat = coords[i]
-        const lon = coords[i + 1]
-        L.circleMarker([lat, lon], {
-          renderer: dotRenderer,
-          radius: 4,
-          stroke: true,
-          color: '#fff',
-          weight: 1.5,
-          fillColor: opts.dot,
-          fillOpacity: 0.95
-        })
-          .bindPopup(popupFor(opts, lat, lon))
-          .addTo(dots)
+      for (let i = 0; i < coords.length && wanted.size < MAX_DOTS; i += 2) {
+        wanted.add(`${type}:${coords[i]}:${coords[i + 1]}`)
       }
+    })
+    dotIndex.forEach((marker, key) => {
+      if (wanted.has(key)) return
+      dots.removeLayer(marker)
+      dotIndex.delete(key)
+    })
+    wanted.forEach((key) => {
+      if (dotIndex.has(key)) return
+      const [type, lat, lon] = key.split(':')
+      const opts = interests[type]
+      const marker = L.circleMarker([+lat, +lon], {
+        renderer: dotRenderer,
+        radius: 4,
+        stroke: true,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: opts.dot,
+        fillOpacity: 0.95
+      })
+      marker.poi = { opts, lat: +lat, lon: +lon }
+      dotIndex.set(key, marker)
+      dots.addLayer(marker)
     })
   }
 
@@ -18560,14 +17828,19 @@ requirejs([
   }
 
   function clearLayers() {
-    Object.keys(layers).forEach((type) => layers[type].setData({ data: [], max: 1 }))
+    heat.clear()
     dots.clearLayers()
+    dotIndex.clear()
   }
 
   function countIn(coords, bounds) {
     let count = 0
+    const south = bounds.getSouth()
+    const north = bounds.getNorth()
+    const west = bounds.getWest()
+    const east = bounds.getEast()
     for (let i = 0; i < coords.length; i += 2) {
-      if (bounds.contains([coords[i], coords[i + 1]])) count++
+      if (coords[i] >= south && coords[i] <= north && coords[i + 1] >= west && coords[i + 1] <= east) count++
     }
     return count
   }
